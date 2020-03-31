@@ -2468,7 +2468,8 @@ class _Channel(object):
                 strmcfg.dataloggerSerialNumber, strmcfg.dataloggerChannel,
                 strmcfg.sampleRateNumerator, strmcfg.sampleRateDenominator)
 
-            sens *= gain
+            if gain is not None:
+                sens *= gain
 
             if stream_deci.digitalFilterChain:
                 if len(stream_deci.digitalFilterChain) > 0:
