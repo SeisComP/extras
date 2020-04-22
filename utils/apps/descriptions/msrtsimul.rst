@@ -14,6 +14,11 @@ in playbacks for whole-system demonstrations, user training, etc.
   to be started with the option *playback*.
 * Use :ref:`scmssort` to sort the data by end time for a realistic playback.
 
+.. warning::
+
+   For a real-time playback, the data must be sorted by time. This requirement
+   may be violated. Use :ref:`scmssort` to sort the data before making a playback.
+
 Examples
 --------
 
