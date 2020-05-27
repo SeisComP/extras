@@ -233,11 +233,6 @@ def available(server="localhost:18000",
  
     return windows
  
-# windows = available("st32:18000", verbose=1)
- 
-# for stream_id in windows: 
-#    print stream_id, windows[stream_id] 
-
 
 def server_version(host, port=18000):
 
