@@ -97,11 +97,11 @@ class Tab(object):
 		db = m.groupdict()
 		
 		try:
-			registry = seiscomp.client.PluginRegistry.Instance()
+			registry = seiscomp.system.PluginRegistry.Instance()
 			registry.addPluginName("dbmysql")
 			registry.loadPlugins()
 		except Exception as e:
-			raise "Cannot load database driver: %s"
+			raise #"Cannot load database driver: %s"
 		
 		dbDriver = seiscomp.io.DatabaseInterface.Create(db["dbDriverName"])
 		if dbDriver is None:
