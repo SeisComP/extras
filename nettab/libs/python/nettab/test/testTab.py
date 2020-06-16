@@ -13,6 +13,7 @@
 from __future__ import print_function
 
 from nettab.tab import Tab
+import json
 import os
 import sys
 import tempfile
@@ -238,7 +239,9 @@ Na: Foo=bar
         self._writeNewInvXML(sc3inv, outFile)
         self.assertTrue(os.path.exists(outFile))
 
-        # Further checks: that the file contains a network with PID. TODO
+        # Check that the file contains exactly one network comment
+        # which is a JSON string with PID.
+        # e.g. '{"type": "DOI", "value": "10.1234/xsdfa"}'
         (elem, ns) = xmlparse(outFile)
         for e in elem:
             for f in e:
@@ -246,7 +249,11 @@ Na: Foo=bar
                     g = f.findall(ns + 'comment')
                     self.assertTrue(len(g) == 1)
                     t = g[0].findall(ns + 'text')
-                    self.assertEqual(t[0].text, 'doi:10.1234/xyz')
+                    text = t[0].text
+                    j = json.loads(t[0].text)
+                    self.assertEqual(j['type'], 'DOI')
+                    self.assertEqual(j['value'], '10.1234/xyz')
+                    ### self.assertEqual(t[0].text, 'doi:10.1234/xyz')
 
     def test_10_network_comment(self):
         tabString = '''
