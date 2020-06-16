@@ -2,15 +2,36 @@ from __future__ import print_function
 import seiscomp.datamodel, seiscomp.core, seiscomp.config
 from .helpers import parsers
 import datetime
+import sys
+
 
 class sc3(object):
     def _fillSc3(self, obj, att):
         for (k, p) in att.items():
             try:
+                if k == 'Comment':
+                    # print('DEBUG: Adding comment', p)
+                    c = seiscomp.datamodel.Comment()
+                    c.setText(p)
+                    obj.add(c)
+                    continue
+
+                if k == 'Pid':
+                    # print('DEBUG: Adding Pid as comment', p)
+                    c = seiscomp.datamodel.Comment()
+                    (typ, val) = p.split(':', 1)
+                    s = '{"type":"%s","value":"%s"}' % (typ.upper(), val)
+                    c.setText(p)
+                    c.setId('FDSNXML:Identifier/0')
+                    obj.add(c)
+                    continue
+
+                w = 'set' + k
                 p = self.sc3Valid['attributes'][k]['validator'](p)
-                getattr(obj, 'set'+k)(p)
+                getattr(obj, w)(p)
             except Exception as e:
-                print("[Error] %s = %s (%s)" % (k,p,e), file=sys.stderr)
+                print("[Error] %s = %s (%s)" % (k, p, e),
+                      file=sys.stderr)
 
     @staticmethod
     def getBool(val):
@@ -161,6 +182,8 @@ class sc3(object):
                 'Type':                   { 'validator': sc3.getString },
                 'NetClass':               { 'validator': sc3.getString },
                 'Archive':                { 'validator': sc3.getString },
+                'Comment':                { 'validator': sc3.getString },
+                'Pid':                    { 'validator': sc3.getBlob },
                 'Restricted':             { 'validator': sc3.getBool },
                 'Shared':                 { 'validator': sc3.getBool },
                 'Remark':                 { 'validator': sc3.getBlob }
@@ -258,13 +281,10 @@ class sc3(object):
             }
         }
         }
-        
-        if mode not in valid:
-            return None
-        else:
-            return valid[mode]
 
-    def __init__(self, mode, child = []):
+        return(valid.get(mode))
+
+    def __init__(self, mode, child=[]):
         self.sc3Mode = mode
         self.sc3obj = None
         self.sc3Valid = sc3._findValidOnes(mode)
@@ -272,7 +292,7 @@ class sc3(object):
 
     def _create(self):
         if not self.sc3Valid:
-            raise Exception("Class with out a type defined.")
+            raise Exception("Class without a type defined.")
         return self.sc3Valid['creator']()
             
     def sc3Att(self):
@@ -285,7 +305,7 @@ class sc3(object):
 
     def sc3ValidKey(self, key):
         if not self.sc3Valid:
-            raise Exception("Class with out a type defined.")
+            raise Exception("Class without a type defined.")
         return (key in self.sc3Valid['attributes'])
 
     def sc3Resolv(self, inventory):
@@ -324,7 +344,13 @@ class sc3(object):
 
             # Fill the Attributes in
             self._fillSc3(obj, self.sc3Att())
-            
+            # # Only want to see Networks:
+            if (('Code' in self.sc3Att().keys())
+                and ('ArchiveNetworkCode' not in self.sc3Att().keys())
+                and ('Azimuth' not in self.sc3Att().keys())
+           ):
+                print('DEBUG basesc3.py: sc3Obj:', self, self.sc3Att())
+
             # Set as created
             self.sc3obj = obj
 
