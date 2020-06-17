@@ -338,10 +338,10 @@ class sc3(object):
         if not self.sc3obj:
             # Get a new object
             obj = self._create()
-            
+
             # try to resolve REFERENCES to PUBLIC ID
             self.sc3Resolv(inventory)
-            
+
             # Add the derived objects in
             for dobj in self.sc3Derived(inventory):
                 obj.add(dobj)
@@ -349,11 +349,11 @@ class sc3(object):
             # Fill the Attributes in
             self._fillSc3(obj, self.sc3Att())
             # # Only want to see Networks:
-            if (('Code' in self.sc3Att().keys())
-                and ('ArchiveNetworkCode' not in self.sc3Att().keys())
-                and ('Azimuth' not in self.sc3Att().keys())
-           ):
-                print('DEBUG basesc3.py: sc3Obj:', self, self.sc3Att())
+            # if (('Code' in self.sc3Att().keys())
+            #     and ('ArchiveNetworkCode' not in self.sc3Att().keys())
+            #     and ('Azimuth' not in self.sc3Att().keys())
+            #     ):
+            #     print('DEBUG basesc3.py: sc3Obj:', self, self.sc3Att())
 
             # Set as created
             self.sc3obj = obj
