@@ -7,12 +7,15 @@ import sys
 
 class sc3(object):
     def _fillSc3(self, obj, att):
+        commentNum = 0
         for (k, p) in att.items():
             try:
                 if k == 'Comment':
                     # print('DEBUG: Adding comment', p)
                     c = seiscomp.datamodel.Comment()
                     c.setText(p)
+                    c.setId(str(commentNum))
+                    commentNum += 1
                     obj.add(c)
                     continue
 
@@ -22,7 +25,8 @@ class sc3(object):
                     (typ, val) = p.split(':', 1)
                     s = '{"type":"%s","value":"%s"}' % (typ.upper(), val)
                     c.setText(p)
-                    c.setId('FDSNXML:Identifier/0')
+                    c.setId(str(commentNum))
+                    commentNum += 1
                     obj.add(c)
                     continue
 
