@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 ################################################################################
-# Copyright (C) 2012-2013 Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
+# Copyright (C) 2012-2013, 2020 Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ
 #
 # tabinvmodifier -- Tool for inventory modification using nettab files.
 #
@@ -225,7 +225,6 @@ class InventoryModifier(seiscomp.client.Application):
             return 0
 
         Nmsg = seiscomp.datamodel.Notifier.GetMessage(True)
-        
         it = Nmsg.iter()
         msg = seiscomp.datamodel.NotifierMessage()
 
@@ -273,9 +272,39 @@ class InventoryModifier(seiscomp.client.Application):
     @staticmethod
     def _modifyInventory(mode, obj, att):
         valid = sc3._findValidOnes(mode)
-        if att:
-            for (k,p) in att.items():
+        if not att:
+            return
+
+        # Why repeat the code in basesc3.py (sc3::_fillSc3())?
+        # What about if there are existing comments/pids - won't
+        # this code get the count wrong??  *FIXME*
+        commentNum = 0
+        for (k,p) in att.items():
                 try:
+                    if k == 'Comment':
+                        # print('DEBUG: Adding comment', p)
+                        if p.startswith('Grant'):
+                             # 2020: These belong in DOI metadata, not here.
+                             continue
+
+                        c = seiscomp.datamodel.Comment()
+                        c.setText(p)
+                        c.setId(str(commentNum))
+                        commentNum += 1
+                        obj.add(c)
+                        continue
+
+                    if k == 'Pid':
+                        print('DEBUG: Adding Pid as comment', p)
+                        c = seiscomp.datamodel.Comment()
+                        (typ, val) = p.split(':', 1)
+                        s = '{"type":"%s", "value":"%s"}' % (typ.upper(), val)
+                        c.setText(s)
+                        c.setId('FDSNXML:Identifier/' + str(commentNum))
+                        commentNum += 1
+                        obj.add(c)
+                        continue
+
                     p = valid['attributes'][k]['validator'](p)
                     getattr(obj, 'set'+k)(p)
                 except KeyError:
@@ -283,8 +312,8 @@ class InventoryModifier(seiscomp.client.Application):
                     hint = ''
                     if k[0] in string.lowercase:
                         hint = " (try '%s' instead)" % ( k[0].upper() + k[1:])
-                    print('Modifiying %s: \'%s\' is not a valid key%s' % (mode, k, hint), file=sys.stderr)
-            obj.update()
+                    print('Modifying %s: \'%s\' is not a valid key%s' % (mode, k, hint), file=sys.stderr)
+        obj.update()
         return
 
     def run(self):

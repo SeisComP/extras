@@ -12,6 +12,10 @@ class sc3(object):
             try:
                 if k == 'Comment':
                     # print('DEBUG: Adding comment', p)
+                    if p.startswith('Grant'):
+                        # 2020: These belong in DOI metadata, not here.
+                        continue
+
                     c = seiscomp.datamodel.Comment()
                     c.setText(p)
                     c.setId(str(commentNum))
@@ -23,9 +27,9 @@ class sc3(object):
                     # print('DEBUG: Adding Pid as comment', p)
                     c = seiscomp.datamodel.Comment()
                     (typ, val) = p.split(':', 1)
-                    s = '{"type":"%s","value":"%s"}' % (typ.upper(), val)
+                    s = '{"type":"%s", "value":"%s"}' % (typ.upper(), val)
                     c.setText(s)
-                    c.setId(str(commentNum))
+                    c.setId('FDSNXML:Identifier/' + str(commentNum))
                     commentNum += 1
                     obj.add(c)
                     continue
