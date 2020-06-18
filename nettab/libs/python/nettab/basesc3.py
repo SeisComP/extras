@@ -24,7 +24,7 @@ class sc3(object):
                     c = seiscomp.datamodel.Comment()
                     (typ, val) = p.split(':', 1)
                     s = '{"type":"%s","value":"%s"}' % (typ.upper(), val)
-                    c.setText(p)
+                    c.setText(s)
                     c.setId(str(commentNum))
                     commentNum += 1
                     obj.add(c)
