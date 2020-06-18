@@ -371,7 +371,7 @@ class Sl(object):
 		if sa.match(self.code, None, None, self.start, self.end):
 			if verboseFlag:
 				if sa.Key in self.attStation:
-					print("Overridding Station key %s=%s with %s" % (sa.Key, self.attStation[sa.Key], sa.Value), file=sys.stderr)
+					print("Overriding Station key %s=%s with %s" % (sa.Key, self.attStation[sa.Key], sa.Value), file=sys.stderr)
 				else:
 					print("Adding Station key %s to %s" % (sa.Key, self.code), file=sys.stderr)
 			self.attStation[sa.Key] = sa.Value
@@ -461,7 +461,7 @@ class Na(object):
 		value = value.strip()
 		if len(key) == 0 or len(value) == 0:
 			raise Exception("Key/value should not be empty") 
-		return (key,value)
+		return (key, value)
 
 class Sa(object):
 	def __str__(self):
@@ -476,8 +476,8 @@ class Sa(object):
 		try:
 			items = shlex.split(line)
 			items.reverse()
-			keypair=items.pop()
-			(key,value) = keypair.split("=",1)
+			keypair = items.pop()
+			(key, value) = keypair.split("=", 1)
 			for item in items:
 				if item[0:3] == "to=":
 					self.end = parsers.parseDate(item[3:])

@@ -1,0 +1,73 @@
+# Begin data logger list
+#                        Gain   max.spfr mcld IIR(A,I)/FIR filter stages (not mandatory)
+Ia: DigitizerModel="M24" M24-SC M24/BW
+Ia: DigitizerModel="Q330" Q330/N Q330/HR Q330-SC
+
+Ia: RecorderModel="M24" M24-SC M24/BW
+Ia: RecorderModel="SeisComP" Q330-SC
+Ia: RecorderModel="Q330" Q330/N Q330/HR
+
+Ia: RecorderManufacturer="Quanterra" Q330/N Q330/HR
+Ia: RecorderManufacturer="Lennartz" M24-SC M24/BW
+Ia: RecorderManufacturer="Alpha2000" Q330-SC
+
+Ia: DigitizerManufacturer="Quanterra" Q330/N Q330/HR Q330-SC
+Ia: DigitizerManufacturer="Lennartz" M24-SC M24/BW
+
+#                        Gain   max.spfr mcld IIR(A,I)/FIR filter stages (not mandatory)
+Dl: Q330/N       419430.0    100.0 0.0 Q330  200,100_1,50_2,40_3,20_4,1_5,0.1_5/10
+Dl: Q330/HR      1677720.0   100.0 0.0 Q330  100_1,50_2,40_3,20_4,1_5,0.1_5/10
+Dl: Q330-SC      419430.0    100.0 0.0 Q330  100_1,50_1/6,20_1/7,1_1/7/8/9,0.1_1/7/8/9/10
+
+#
+# End data logger list
+
+
+# FIR filter list for Quanterra Q330 digitizer and Seiscomp recorder
+#                Name      Sym ncf  inrate fac delay    corrtn  gain frg
+Ff: Q330_FIR_1 q330_b100_100   A  65 0  100.0  1  0.041607  0.041607 1.0 0.0
+Ff: Q330_FIR_2 q330_b100_50    A  81 0   50.0  1  0.531607  0.531607 1.0 0.0
+Ff: Q330_FIR_3 q330_b100_40    A  39 0   40.0  1  0.430462  0.430462 1.0 0.0
+Ff: Q330_FIR_4 q330_b100_20    A  67 0   20.0  1  1.630462  1.630462 1.0 0.0
+Ff: Q330_FIR_5 q330_b100_1     A  31 0    1.0  1 15.930462 15.930462 1.0 0.0
+Ff: Q330_FIR_6 scp_deci2.1     C  48 0  100.0  2  0.000     0.0      1.0 0.0
+Ff: Q330_FIR_7 scp_deci5.1     C  80 0  100.0  5  0.000     0.0      1.0 0.0
+Ff: Q330_FIR_8 scp_deci2.1     C  48 0   20.0  2  0.000     0.0      1.0 0.0
+Ff: Q330_FIR_9 scp_deci10.1    C 200 0   10.0 10  0.000     0.0      1.0 0.0
+Ff: Q330_FIR_10 scp_deci10.1   C 200 0    1.0 10  0.000     0.0      4.0 0.0
+
+
+
+# Digitizer IIR filter response list
+#
+
+# Digitizer analog response list
+#
+
+
+# Begin seismometer list
+# Seismometer analog response list
+#              .        Gain  frgn Norm.fac fnr  nz np Zeros&Poles
+#   Sensor type: VBB
+Ia: Model="STS-2/CZ" STS-2/CZ
+Ia: Model="STS-2/N" STS-2/N
+Ia: Model="STS-2/G2" STS-2/G2
+Ia: Model="STS-2/HG" STS-2/HG
+Ia: Model="STS-2/G1" STS-2/G1
+Ia: Model="STS-2/G3" STS-2/G3
+
+Ia: Type="VBB" STS-2/CZ STS-2/N STS-2/G2 STS-2/HG STS-2/G3 STS-2/G1
+
+Ia: Unit="M/S" STS-2/CZ STS-2/N STS-2/G2 STS-2/HG STS-2/G3 STS-2/G1
+
+Ia: Manufacturer="Streckeisen" STS-2/CZ STS-2/N STS-2/G2 STS-2/HG STS-2/G3 STS-2/G1
+
+Se: STS-2/N           1500.0 0.02 6.0077e7 1.0  2  5  2(0.0,0.0) (-0.037004,0.037016)  (-0.037004,-0.037016) (-251.33,0.0) (-131.04,-467.29) (-131.04,467.29)
+Se: STS-2/G1          1500.0 0.02 3.46844e17 1.0 5 9  2(0.0,0.0) (-15.15,0.0) (-318.6,401.2) (-318.6,-401.2) (-0.037,0.037) (-0.037,-0.037) (-15.99,0.0) (-100.9,401.9) (-100.9,-401.9) (-187.2,0.0) (-417.1,0.0) (-7454.0,7142.0) (-7454.0,-7142.0)
+Se: STS-2/G2          1500.0 0.02 3.46844e17 1.0 9 14 2(0.0,0.0) (-10.75,0.0) (-294.6,0.0) (-555.1,0.0) (-683.9,175.5) (-683.9,-175.5) (-5907.0,3411.0) (-5907.0,-3411.0) (-0.037,0.037) (-0.037,-0.037) (-10.95,0.0) (-98.44,442.8) (-98.44,-442.8) (-251.1,0.0) (-556.8,60.0) (-556.8,-60.0) (-1391.0,0.0) (-4936.0,4713.0) (-4936.0,-4713.0) (-6227.0,0.0) (-6909.0,9208.0) (-6909.0,-9208.0)
+Se: STS-2/G3          1500.0 0.02 3.46844e17 1.0 6 11 2(0.0,0.0) (-15.15,0.0) (-176.6,0.0) (-463.1,430.5) (-463.1,-430.5) (-0.037,0.037) (-0.037,-0.037) (-15.64,0.0) (-97.34,-400.7) (-97.34,400.7) (-255.1,0.0) (-374.8,0.0) (-520.3,0.0) (-10530.,10050.) (-10530.,-10050.) (-13300.,0.0)
+#Streckeisen_STS-2/HG> 20000.0 0.02 3.46844e17 1.0 6 11 2(0.0,0.0) (-15.15,0.0) (-176.6,0.0) (-463.1,430.5) (-463.1,430.5) (-0.037,0.037) (-0.037,-0.037) (-15.64,0.0) (-97.34,-400.7) (-97.34,400.7) (-255.1,0.0) (-374.8,0.0) (-520.3,0.0) (-10530.,10050.) (-10530.,-10050.) (-13300.,0.0)
+#Streckeisen_STS-2/CZ>  1500.0  1.0 4.47172e2 1.0 6  7  2(0.0,0.0) (-15.1488,0.0) (-199.554,0.0) (-461.814,429.079) (-461.814,-429.079) (-0.03702,0.03702) (-0.03702,-0.03702) (-15.2744,0.0) (-82.8124,409.852) (-82.8124,-409.852) (-443.314,0.0) (-454.526,0.0)
+
+
+# End seismometer list
