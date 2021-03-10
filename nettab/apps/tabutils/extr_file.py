@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env seiscomp-python
 
 from __future__ import print_function
 import sys
@@ -18,7 +18,7 @@ for rec in mseed.Input(file(sys.argv[1])):
             rec.begin_time.timetuple()[7], rec.begin_time.hour,
             rec.begin_time.minute)
 
-        open_files[oname] = file(oname + postfix, "a")
+        open_files[oname] = file(oname + postfix, "ab")
 
     ofile = open_files[oname]
     ofile.write(rec.header + rec.data)
