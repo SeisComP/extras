@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <seiscomp>
 	<module name="msrtsimul" category="Acquisition">
-		<description>MiniSEED real time simulation</description>
+		<description>MiniSEED real time playback and simulation</description>
 		<command-line>
 			<synopsis>
 				msrtsimul [OPTION] miniSEED-file
@@ -9,7 +9,8 @@
 			<group name="Options">
 				<option flag="c" long-flag="stdout" argument="">
 					<description>
-					write on standard output
+					write on standard output. The output my be redirected to a
+					specific mseedfifo path.
 					</description>
 				</option>
 				<option flag="d" long-flag="delays" argument="" unit="">
@@ -19,7 +20,7 @@
 				</option>
 				<option flag="s" long-flag="speed" argument="float" unit="">
 					<description>
-					speed factor
+					speed factor. 1 is normal speed.
 					</description>
 				</option>
 				<option flag="j" long-flag="jump" argument="float" unit="minutes">
@@ -35,6 +36,13 @@
 				<option flag="m" long-flag="mode" argument="string" unit="">
 					<description>
 					playback mode: choose between 'realtime' and 'historic'
+					</description>
+				</option>
+				<option flag="" long-flag="seedlink" argument="string" unit="">
+					<description>
+					the seedlink module name. Useful if a seedlink alias or
+					non-standard names are used. Replaces 'seedlink'
+					in the standard mseedfifo path.
 					</description>
 				</option>
 				<option flag="v" long-flag="verbose" argument="" unit="">
