@@ -109,19 +109,23 @@ def usage():
 msrtsimul - read sorted (and possibly multiplexed) MiniSEED files and
         write the individual records in pseudo-real-time. This is useful
         e.g. for testing and simulating data acquisition. Output
-        is $SEISCOMP_ROOT/var/run/seedlink/mseedfifo unless -c is used.
+        is $SEISCOMP_ROOT/var/run/seedlink/mseedfifo unless --seedlink or -c is
+        used.
 
 Usage: msrtsimul [options] [file]
 
 Options:
-    -c, --stdout        write on standard output
-    -d, --delays        add artificial delays
-    -s, --speed         speed factor (float)
-    -j, --jump          minutes to skip (float)
-        --test          test mode
-    -m  --mode          choose between 'realtime' and 'historic'
-    -v, --verbose       verbose mode
-    -h, --help          display this help message
+    -c, --stdout          write on standard output
+    -d, --delays          add artificial delays
+    -s, --speed           speed factor (float)
+    -j, --jump            minutes to skip (float)
+        --test            test mode
+    -m  --mode            choose between 'realtime' and 'historic'
+        --seedlink        choose the seedlink module name. Useful if a seedlink
+                          alias or non-standard names are used. Replaces 'seedlink'
+                          in the standard mseedfifo path.
+    -v, --verbose         verbose mode
+    -h, --help            display this help message
 """)
 
 
@@ -134,12 +138,14 @@ def main():
     speed = 1.
     jump = 0.
     test = False
+    seedlink = 'seedlink'
     mode = 'realtime'
+    setSystemTime = False
 
     try:
-        opts, args = getopt(sys.argv[1:], "cd:s:j:hvm:",
+        opts, args = getopt(sys.argv[1:], "cd:s:j:vhm:",
                             ["stdout", "delays=", "speed=", "jump=", "test",
-                             "verbose", "help", "mode="])
+                             "verbose", "help", "mode=", "seedlink="])
     except GetoptError:
         usage()
         return 1
@@ -158,6 +164,8 @@ def main():
             jump = float(arg)
         elif flag in ("-m", "--mode"):
             mode = arg
+        elif flag == "--seedlink":
+            seedlink = arg
         elif flag in ("-v", "--verbose"):
             verbosity += 1
         elif flag == "--test":
@@ -173,8 +181,9 @@ def main():
             try:
                 ifile = open(args[0], "rb")
             except IOError as e:
-                print("could not open input file {} for reading: {}" \
+                print("could not open input file '{}' for reading: {}" \
                       .format(args[0], e), file=sys.stderr)
+                sys.exit(1)
     elif len(args) != 0:
         usage()
         return 1
@@ -186,7 +195,10 @@ def main():
             print("SEISCOMP_ROOT environment variable is not set", file=sys.stderr)
             sys.exit(1)
 
-        mseed_fifo = os.path.join(sc_root, "var", "run", "seedlink", "mseedfifo")
+        mseed_fifo = os.path.join(sc_root, "var", "run", seedlink, "mseedfifo")
+        if verbosity:
+            print("output data to %s" % mseed_fifo, file=sys.stderr)
+
         if not os.path.exists(mseed_fifo):
             print("""\
 ERROR: {} does not exist.
@@ -208,7 +220,6 @@ Check if SeedLink is running and configured for real-time playback.
             sys.exit(1)
 
     try:
-        stime = time.time()
         delaydict = None
         if delays:
             delaydict = dict()
@@ -224,8 +235,8 @@ Check if SeedLink is running and configured for real-time playback.
                       file=sys.stderr)
 
         inp = rt_simul(ifile, speed=speed, jump=jump, delaydict=delaydict)
+        stime = time.time()
 
-    #input = rt_simul(ifile, speed=speed, jump=jump)
         time_diff = None
         print("Starting msrtsimul at {}".format(datetime.datetime.utcnow()), file=sys.stderr)
         for rec in inp:

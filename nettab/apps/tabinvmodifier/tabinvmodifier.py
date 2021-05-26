@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env seiscomp-python
 
 ################################################################################
 # Copyright (C) 2012-2013, 2020 Helmholtz-Zentrum Potsdam - Deutsches GeoForschungsZentrum GFZ

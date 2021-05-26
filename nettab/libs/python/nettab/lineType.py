@@ -4,7 +4,7 @@ import decimal
 import shlex
 import sys
 import re
-from helpers import parsers
+from .helpers import parsers
 
 verboseFlag = 0
 
@@ -350,7 +350,7 @@ class Sl(object):
 				elif sample_rate == decimal.Decimal("0.01"):
 					band_code = 'U'
 				else:
-					raise Exception("could not determine band code for %s in %s" (x, sampling))
+					raise Exception("could not determine band code for %s in %s" % (x, sampling))
 			
 			for orientation in self.orientations:
 				code = band_code + self.gainCode + orientation
