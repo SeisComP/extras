@@ -240,6 +240,8 @@ Check if SeedLink is running and configured for real-time playback.
         time_diff = None
         print("Starting msrtsimul at {}".format(datetime.datetime.utcnow()), file=sys.stderr)
         for rec in inp:
+            if rec.size != 512:
+                continue
             if time_diff is None:
                 ms = 1000000.0 * (rec.nsamp / rec.fsamp)
                 time_diff = datetime.datetime.utcnow() - rec.begin_time - \
