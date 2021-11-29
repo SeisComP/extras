@@ -241,6 +241,7 @@ Check if SeedLink is running and configured for real-time playback.
         print("Starting msrtsimul at {}".format(datetime.datetime.utcnow()), file=sys.stderr)
         for rec in inp:
             if rec.size != 512:
+                print("Skipping record of {}.{}.{}.{} starting on {}: length != 512 Bytes: ".format(rec.net, rec.sta, rec.loc, rec.cha, str(rec.begin_time)), file=sys.stderr)
                 continue
             if time_diff is None:
                 ms = 1000000.0 * (rec.nsamp / rec.fsamp)
