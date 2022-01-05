@@ -10,7 +10,7 @@ if len(sys.argv) != 2:
     print("Usage: extr_file FILE")
     sys.exit(1)
 
-for rec in mseed.Input(file(sys.argv[1])):
+for rec in mseed.Input(open(sys.argv[1], "rb")):
     oname = "%s.%s.%s.%s" % (rec.sta, rec.net, rec.loc, rec.cha)
     
     if oname not in open_files:
@@ -18,7 +18,7 @@ for rec in mseed.Input(file(sys.argv[1])):
             rec.begin_time.timetuple()[7], rec.begin_time.hour,
             rec.begin_time.minute)
 
-        open_files[oname] = file(oname + postfix, "ab")
+        open_files[oname] = open(oname + postfix, "ab")
 
     ofile = open_files[oname]
     ofile.write(rec.header + rec.data)
