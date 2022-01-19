@@ -31,7 +31,7 @@ def parseDate(val):
     try:
         return datetime.strptime(date, formats[len(date)])
     except Exception as e:
-        raise ValueError, "invalid date: " + date + str(e)
+        raise ValueError("invalid date: " + date + str(e))
 
 def formatDate(date):
     if not date:
