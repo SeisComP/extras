@@ -1,1 +1,1 @@
-SUBDIRS(tab2inv tab2tab tabinvmodifier tabutils)
+SUBDIRS(tab2inv tab2tab tabinvmodifier)
