@@ -105,28 +105,34 @@ def rt_simul(f, speed=1., jump=0., delaydict=None):
 
 #------------------------------------------------------------------------------
 def usage():
-    sys.stderr.write("""
-msrtsimul - read sorted (and possibly multiplexed) MiniSEED files and
-        write the individual records in pseudo-real-time. This is useful
-        e.g. for testing and simulating data acquisition. Output
-        is $SEISCOMP_ROOT/var/run/seedlink/mseedfifo unless --seedlink or -c is
-        used.
+    print('''Usage: 
+  msrtsimul [options] file
 
-Usage: msrtsimul [options] [file]
+MiniSEED real time playback and simulation
+
+msrtsimul reads sorted (and possibly multiplexed) MiniSEED files and writes
+individual records in pseudo-real-time. This is useful e.g. for testing and
+simulating data acquisition. Output is 
+$SEISCOMP_ROOT/var/run/seedlink/mseedfifo unless --seedlink or -c is used.
+
 
 Options:
-    -c, --stdout          write on standard output
-    -d, --delays          add artificial delays
-    -s, --speed           speed factor (float)
-    -j, --jump            minutes to skip (float)
-        --test            test mode
-    -m  --mode            choose between 'realtime' and 'historic'
-        --seedlink        choose the seedlink module name. Useful if a seedlink
-                          alias or non-standard names are used. Replaces 'seedlink'
-                          in the standard mseedfifo path.
-    -v, --verbose         verbose mode
-    -h, --help            display this help message
-""")
+  -c, --stdout          write on standard output
+  -d, --delays          add artificial delays
+  -s, --speed           speed factor (float)
+  -j, --jump            minutes to skip (float)
+  --test                test mode
+  -m  --mode            choose between 'realtime' and 'historic'
+  --seedlink            choose the seedlink module name. Useful if a seedlink
+                        alias or non-standard names are used. Replaces 'seedlink'
+                        in the standard mseedfifo path.
+  -v, --verbose         verbose mode
+  -h, --help            display this help message
+  
+Examples:
+Play back miniSEED waveforms in real time with verbose output
+   msrtsimul -v miniSEED-file    
+''')
 
 
 #------------------------------------------------------------------------------
