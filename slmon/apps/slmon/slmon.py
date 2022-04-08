@@ -10,29 +10,25 @@ import  seiscomp.slclient
 import seiscomp.kernel, seiscomp.config
 
 usage_info = """
-slmon - SeedLink monitor creating static web pages
+Usage:
+  slmon [options]
 
-Usage: slmon [options]
+SeedLink monitor creating static web pages
 
 Options:
-    -h, --help       display this help message
-    -c              ini_setup = arg
-    -s              ini_stations = arg
-    -t              refresh = float(arg) # XXX not yet used
-    -v              verbose = 1
+  -h, --help       display this help message
+  -c              ini_setup = arg
+  -s              ini_stations = arg
+  -t              refresh = float(arg) # XXX not yet used
+  -v              verbose = 1
 
 Examples:
-
 Start slmon from the command line
-
-slmon -c $SEISCOMP_ROOT/var/lib/slmon/config.ini
-
-Application:
+  slmon -c $SEISCOMP_ROOT/var/lib/slmon/config.ini
 
 Restart slmon in order to update the web pages. Use crontab entries for
 automatic restart, e.g.:
-
-*/3 * * * * /home/sysop/seiscomp/bin/seiscomp check slmon >/dev/null 2>&1
+  */3 * * * * /home/sysop/seiscomp/bin/seiscomp check slmon >/dev/null 2>&1
 """
 
 def usage(exitcode=0):
