@@ -246,7 +246,8 @@ class Sl(object):
 			code = ma.groupdict()["channelCode"]
 			if ma.groupdict()["channelOrientation"]:
 				if code in ["Z", "N", "E"]:
-					raise Exception("You should not supply a Azimuth/Dip for ZNE channels.")
+					# raise Exception("You should not supply a Azimuth/Dip for ZNE channels.")
+					print("You should not supply a Azimuth/Dip for ZNE channels.")
 				try:
 					(dip,azimuth) = ma.groupdict()["channelOrientation"].split(",")
 					dip = float(dip)
@@ -937,7 +938,7 @@ class Ff(object):
 					raise Exception("invalid number of coefficients in %s/%s" % (self.id, self.filename))
 
 				coeff_strlist = [ coeff_split[3 * i + 1] for i in range(real_ncf) ]
-				coeff = map(float, coeff_strlist)
+				coeff = list(map(float, coeff_strlist))
 
 			except (TypeError, ValueError) as e:
 				raise Exception("error reading %s/%s: %s"  % (self.id, self.filename, str(e)))
