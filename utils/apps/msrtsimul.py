@@ -9,7 +9,7 @@ import datetime
 import calendar
 import stat
 
-from getopt import getopt, GetoptError
+from getopt import gnu_getopt, GetoptError
 from seiscomp import mseedlite as mseed
 
 
@@ -105,33 +105,37 @@ def rt_simul(f, speed=1., jump=0., delaydict=None):
 
 #------------------------------------------------------------------------------
 def usage():
-    print('''Usage: 
+    print('''Usage:
   msrtsimul [options] file
 
-MiniSEED real time playback and simulation
+miniSEED real-time playback and simulation
 
-msrtsimul reads sorted (and possibly multiplexed) MiniSEED files and writes
+msrtsimul reads sorted (and possibly multiplexed) miniSEED files and writes
 individual records in pseudo-real-time. This is useful e.g. for testing and
-simulating data acquisition. Output is 
+simulating data acquisition. Output is
 $SEISCOMP_ROOT/var/run/seedlink/mseedfifo unless --seedlink or -c is used.
 
+Verbosity:
+  -h, --help            Display this help message
+  -v, --verbose         Verbose mode
 
-Options:
-  -c, --stdout          write on standard output
-  -d, --delays          add artificial delays
-  -s, --speed           speed factor (float)
-  -j, --jump            minutes to skip (float)
-  --test                test mode
-  -m  --mode            choose between 'realtime' and 'historic'
-  --seedlink            choose the seedlink module name. Useful if a seedlink
-                        alias or non-standard names are used. Replaces 'seedlink'
-                        in the standard mseedfifo path.
-  -v, --verbose         verbose mode
-  -h, --help            display this help message
-  
+Playback:
+  -j, --jump            Minutes to skip (float).
+  -c, --stdout          Write on standard output.
+  -d, --delays          Seconds to add as artificial delays.
+      --seedlink        Choose the seedlink module name. Useful if a seedlink
+                        alias or non-standard names are used. Replaces
+                        'seedlink' in the standard mseedfifo path.
+  -m  --mode            Choose between 'realtime' and 'historic'.
+  -s, --speed           Speed factor (float).
+      --test            Test mode.
+
 Examples:
 Play back miniSEED waveforms in real time with verbose output
-   msrtsimul -v miniSEED-file    
+  msrtsimul -v data.mseed
+
+Play back miniSEED waveforms in real time skipping the first 1.5 minutes
+  msrtsimul -j 1.5 data.mseed
 ''')
 
 
@@ -146,12 +150,12 @@ def main():
     test = False
     seedlink = 'seedlink'
     mode = 'realtime'
-    setSystemTime = False
 
     try:
-        opts, args = getopt(sys.argv[1:], "cd:s:j:vhm:",
-                            ["stdout", "delays=", "speed=", "jump=", "test",
-                             "verbose", "help", "mode=", "seedlink="])
+        opts, args = gnu_getopt(sys.argv[1:], "cd:s:j:vhm:",
+                                ["stdout", "delays=", "speed=", "jump=",
+                                 "test", "verbose", "help", "mode=",
+                                 "seedlink="])
     except GetoptError:
         usage()
         return 1
