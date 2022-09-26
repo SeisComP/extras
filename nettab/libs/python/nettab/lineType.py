@@ -937,7 +937,7 @@ class Ff(object):
 					raise Exception("invalid number of coefficients in %s/%s" % (self.id, self.filename))
 
 				coeff_strlist = [ coeff_split[3 * i + 1] for i in range(real_ncf) ]
-				coeff = map(float, coeff_strlist)
+				coeff = list(map(float, coeff_strlist))
 
 			except (TypeError, ValueError) as e:
 				raise Exception("error reading %s/%s: %s"  % (self.id, self.filename, str(e)))
