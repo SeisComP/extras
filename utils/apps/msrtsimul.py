@@ -13,38 +13,38 @@ from getopt import gnu_getopt, GetoptError
 from seiscomp import mseedlite as mseed
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def read_mseed_with_delays(delaydict, reciterable):
     """
-        Create an iterator which takes into account configurable realistic delays.
+    Create an iterator which takes into account configurable realistic delays.
 
-        This function creates an iterator which returns one miniseed record at a time.
-        Artificial delays can be introduced by using delaydict.
+    This function creates an iterator which returns one miniseed record at a time.
+    Artificial delays can be introduced by using delaydict.
 
-        This function can be used to make simulations in real time more realistic
-        when e.g. some stations have a much higher delay than others due to
-        narrow bandwidth communication channels etc.
+    This function can be used to make simulations in real time more realistic
+    when e.g. some stations have a much higher delay than others due to
+    narrow bandwidth communication channels etc.
 
-        A delaydict has the following data structure:
-        keys: XX.ABC (XX: network code, ABC: station code). The key "default" is
-        a special value for the default delay.
-        values: Delay to be introduced in seconds
+    A delaydict has the following data structure:
+    keys: XX.ABC (XX: network code, ABC: station code). The key "default" is
+    a special value for the default delay.
+    values: Delay to be introduced in seconds
 
-        This function will rearrange the iterable object which has been used as
-        input for rt_simul() so that it can again be used by rt_simul but taking
-        artificial delays into account.
+    This function will rearrange the iterable object which has been used as
+    input for rt_simul() so that it can again be used by rt_simul but taking
+    artificial delays into account.
     """
-    import heapq #pylint: disable=C0415
+    import heapq  # pylint: disable=C0415
 
     heap = []
     min_delay = 0
     default_delay = 0
-    if 'default' in delaydict:
-        default_delay = delaydict['default']
+    if "default" in delaydict:
+        default_delay = delaydict["default"]
     for rec in reciterable:
         rec_time = calendar.timegm(rec.end_time.timetuple())
         delay_time = rec_time
-        stationname = "%s.%s" % (rec.net, rec.sta)
+        stationname = f"{rec.net}.{rec.sta}"
         if stationname in delaydict:
             delay_time = rec_time + delaydict[stationname]
         else:
@@ -59,8 +59,8 @@ def read_mseed_with_delays(delaydict, reciterable):
         yield topelement
 
 
-#------------------------------------------------------------------------------
-def rt_simul(f, speed=1., jump=0., delaydict=None):
+# ------------------------------------------------------------------------------
+def rt_simul(f, speed=1.0, jump=0.0, delaydict=None):
     """
     Iterator to simulate "real-time" MSeed input
 
@@ -103,9 +103,10 @@ def rt_simul(f, speed=1., jump=0., delaydict=None):
         yield rec
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def usage():
-    print('''Usage:
+    print(
+        """Usage:
   msrtsimul [options] file
 
 miniSEED real-time playback and simulation
@@ -136,26 +137,38 @@ Play back miniSEED waveforms in real time with verbose output
 
 Play back miniSEED waveforms in real time skipping the first 1.5 minutes
   msrtsimul -j 1.5 data.mseed
-''')
+"""
+    )
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def main():
     py2 = sys.version_info < (3,)
 
     ifile = sys.stdin if py2 else sys.stdin.buffer
     verbosity = 0
-    speed = 1.
-    jump = 0.
+    speed = 1.0
+    jump = 0.0
     test = False
-    seedlink = 'seedlink'
-    mode = 'realtime'
+    seedlink = "seedlink"
+    mode = "realtime"
 
     try:
-        opts, args = gnu_getopt(sys.argv[1:], "cd:s:j:vhm:",
-                                ["stdout", "delays=", "speed=", "jump=",
-                                 "test", "verbose", "help", "mode=",
-                                 "seedlink="])
+        opts, args = gnu_getopt(
+            sys.argv[1:],
+            "cd:s:j:vhm:",
+            [
+                "stdout",
+                "delays=",
+                "speed=",
+                "jump=",
+                "test",
+                "verbose",
+                "help",
+                "mode=",
+                "seedlink=",
+            ],
+        )
     except GetoptError:
         usage()
         return 1
@@ -191,8 +204,10 @@ def main():
             try:
                 ifile = open(args[0], "rb")
             except IOError as e:
-                print("could not open input file '{}' for reading: {}" \
-                      .format(args[0], e), file=sys.stderr)
+                print(
+                    f"could not open input file '{args[0]}' for reading: {e}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
     elif len(args) != 0:
         usage()
@@ -207,20 +222,27 @@ def main():
 
         mseed_fifo = os.path.join(sc_root, "var", "run", seedlink, "mseedfifo")
         if verbosity:
-            print("output data to %s" % mseed_fifo, file=sys.stderr)
+            print(f"output data to {mseed_fifo}", file=sys.stderr)
 
         if not os.path.exists(mseed_fifo):
-            print("""\
-ERROR: {} does not exist.
-In order to push the records to SeedLink, it needs to run and must be configured for real-time playback.
-""".format(mseed_fifo), file=sys.stderr)
+            print(
+                f"""\
+ERROR: {mseed_fifo} does not exist.
+In order to push the records to SeedLink, \
+it needs to run and must be configured for real-time playback.
+""",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         if not stat.S_ISFIFO(os.stat(mseed_fifo).st_mode):
-            print("""\
-ERROR: {} is not a named pipe
+            print(
+                f"""\
+ERROR: {mseed_fifo} is not a named pipe
 Check if SeedLink is running and configured for real-time playback.
-""".format(mseed_fifo), file=sys.stderr)
+""",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         try:
@@ -232,39 +254,56 @@ Check if SeedLink is running and configured for real-time playback.
     try:
         delaydict = None
         if delays:
-            delaydict = dict()
+            delaydict = {}
             try:
-                f = open(delays, 'r')
+                f = open(delays, "r")
                 for line in f:
-                    content = line.split(':')
+                    content = line.split(":")
                     if len(content) != 2:
-                        raise Exception("Could not parse a line in file %s: %s\n" % (delays, line))
+                        raise ValueError(
+                            f"Could not parse a line in file {delays}: {line}\n"
+                        )
                     delaydict[content[0].strip()] = float(content[1].strip())
             except Exception as e:
-                print("Error reading delay file {}: {}".format(delays, e),
-                      file=sys.stderr)
+                print(f"Error reading delay file {delays}: {e}", file=sys.stderr)
 
         inp = rt_simul(ifile, speed=speed, jump=jump, delaydict=delaydict)
         stime = time.time()
 
         time_diff = None
-        print("Starting msrtsimul at {}".format(datetime.datetime.utcnow()), file=sys.stderr)
+        print(
+            f"Starting msrtsimul at {datetime.datetime.utcnow()}",
+            file=sys.stderr,
+        )
         for rec in inp:
             if rec.size != 512:
-                print("Skipping record of {}.{}.{}.{} starting on {}: length != 512 Bytes: ".format(rec.net, rec.sta, rec.loc, rec.cha, str(rec.begin_time)), file=sys.stderr)
+                print(
+                    f"Skipping record of {rec.net}.{rec.sta}.{rec.loc}.{rec.cha} \
+starting on {str(rec.begin_time)}: length != 512 Bytes.",
+                    file=sys.stderr,
+                )
                 continue
             if time_diff is None:
                 ms = 1000000.0 * (rec.nsamp / rec.fsamp)
-                time_diff = datetime.datetime.utcnow() - rec.begin_time - \
-                    datetime.timedelta(microseconds=ms)
-            if mode == 'realtime':
+                time_diff = (
+                    datetime.datetime.utcnow()
+                    - rec.begin_time
+                    - datetime.timedelta(microseconds=ms)
+                )
+            if mode == "realtime":
                 rec.begin_time += time_diff
 
             if verbosity:
-                print("%s_%s %7.2f %s %7.2f" % \
-                      (rec.net, rec.sta, (time.time() - stime), str(rec.begin_time),
-                       time.time() - calendar.timegm(rec.begin_time.timetuple())),
-                      file=sys.stderr)
+                tdiff_to_start = time.time() - stime
+                tdiff_to_current = time.time() - calendar.timegm(
+                    rec.begin_time.timetuple()
+                )
+                nslc = f"{rec.net}.{rec.sta}.{rec.loc}.{rec.cha}"
+                print(
+                    f"{nslc: <17} \
+{tdiff_to_start: 7.2f} {str(rec.begin_time)} {tdiff_to_current: 7.2f}",
+                    file=sys.stderr,
+                )
 
             if not test:
                 rec.write(out_channel, 9)
@@ -273,12 +312,12 @@ Check if SeedLink is running and configured for real-time playback.
     except KeyboardInterrupt:
         pass
     except Exception as e:
-        print("Exception: {}".format(str(e)), file=sys.stderr)
+        print(f"Exception: {str(e)}", file=sys.stderr)
         return 1
 
     return 0
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 if __name__ == "__main__":
     sys.exit(main())
