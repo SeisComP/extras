@@ -97,9 +97,12 @@ class StationGroup(nslc,sc3):
 
 	def sc3Resolv(self, inventory):
 		for (ncode, scode, start, end) in self.srdata:
-			for stationID in inventory.resolveStation(ncode, scode, start, end):
-				st = StationReference(self, stationID)
-				self.stationReferences.append(st)
+			try:
+				for stationID in inventory.resolveStation(ncode, scode, start, end):
+					st = StationReference(self, stationID)
+					self.stationReferences.append(st)
+			except Exception as e:
+				sys.stderr.write(str(e) + "\n")
 
 class StationReference(sc3):
 	def __str__(self):

@@ -246,7 +246,8 @@ class Sl(object):
 			code = ma.groupdict()["channelCode"]
 			if ma.groupdict()["channelOrientation"]:
 				if code in ["Z", "N", "E"]:
-					raise Exception("You should not supply a Azimuth/Dip for ZNE channels.")
+					# raise Exception("You should not supply a Azimuth/Dip for ZNE channels.")
+					print("You should not supply a Azimuth/Dip for ZNE channels.")
 				try:
 					(dip,azimuth) = ma.groupdict()["channelOrientation"].split(",")
 					dip = float(dip)
