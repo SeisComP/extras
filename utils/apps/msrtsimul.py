@@ -7,6 +7,7 @@ import os
 import time
 import datetime
 import calendar
+import math
 import stat
 
 from getopt import gnu_getopt, GetoptError
@@ -130,6 +131,7 @@ Playback:
   -m  --mode            Choose between 'realtime' and 'historic'.
   -s, --speed           Speed factor (float).
       --test            Test mode.
+  -u, --unlimited       Allow miniSEED records which are not 512 bytes
 
 Examples:
 Play back miniSEED waveforms in real time with verbose output
@@ -150,13 +152,14 @@ def main():
     speed = 1.0
     jump = 0.0
     test = False
+    ulimited = False
     seedlink = "seedlink"
     mode = "realtime"
 
     try:
         opts, args = gnu_getopt(
             sys.argv[1:],
-            "cd:s:j:vhm:",
+            "cd:s:j:vhm:u",
             [
                 "stdout",
                 "delays=",
@@ -167,6 +170,7 @@ def main():
                 "help",
                 "mode=",
                 "seedlink=",
+                "unlimited"
             ],
         )
     except GetoptError:
@@ -193,6 +197,8 @@ def main():
             verbosity += 1
         elif flag == "--test":
             test = True
+        elif flag in ("-u", "--unlimited"):
+            ulimited = True
         else:
             usage()
             if flag in ("-h", "--help"):
@@ -276,7 +282,7 @@ Check if SeedLink is running and configured for real-time playback.
             file=sys.stderr,
         )
         for rec in inp:
-            if rec.size != 512:
+            if rec.size != 512 and not ulimited:
                 print(
                     f"Skipping record of {rec.net}.{rec.sta}.{rec.loc}.{rec.cha} \
 starting on {str(rec.begin_time)}: length != 512 Bytes.",
@@ -306,7 +312,7 @@ starting on {str(rec.begin_time)}: length != 512 Bytes.",
                 )
 
             if not test:
-                rec.write(out_channel, 9)
+                rec.write(out_channel, int(math.log2(rec.size)))
                 out_channel.flush()
 
     except KeyboardInterrupt:
