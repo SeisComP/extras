@@ -67,19 +67,13 @@ def _mdy2dy(month, day, year):
 class EndOfData(Exception):
     """."""
 
-    pass
-
 
 class MSeedError(Exception):
     """."""
 
-    pass
-
 
 class MSeedNoData(MSeedError):
     """."""
-
-    pass
 
 
 class Record(object):
@@ -140,12 +134,7 @@ class Record(object):
 
         self.header += fixhead
 
-        if (
-            (self.rectype != "D")
-            and (self.rectype != "R")
-            and (self.rectype != "Q")
-            and (self.rectype != "M")
-        ):
+        if self.rectype not in ("D", "R", "Q", "M"):
             fd.read(_MAX_RECLEN - _FIXHEAD_LEN)
             raise MSeedNoData("non-data record")
 
@@ -185,9 +174,7 @@ class Record(object):
         while pos < blklen:
             blkhead = fd.read(_BLKHEAD_LEN)
             if len(blkhead) < _BLKHEAD_LEN:
-                raise MSeedError(
-                    "unexpected end of blockettes at %s" % pos + len(blkhead)
-                )
+                raise MSeedError(f"unexpected end of blockettes at{pos}{len(blkhead)}")
 
             (blktype, nextblk) = struct.unpack(">2H", blkhead)
             self.header += blkhead
@@ -197,7 +184,7 @@ class Record(object):
                 blk1000 = fd.read(_BLK1000_LEN)
                 if len(blk1000) < _BLK1000_LEN:
                     raise MSeedError(
-                        "unexpected end of blockettes at %s" % pos + len(blk1000)
+                        f"unexpected end of blockettes at {pos}{len(blk1000)}"
                     )
 
                 (self.encoding, self.byteorder, rec_len_exp) = struct.unpack(
@@ -212,7 +199,7 @@ class Record(object):
                 blk1001 = fd.read(_BLK1001_LEN)
                 if len(blk1001) < _BLK1001_LEN:
                     raise MSeedError(
-                        "unexpected end of blockettes at %s" % pos + len(blk1001)
+                        f"unexpected end of blockettes at {pos}{len(blk1001)}"
                     )
 
                 (self.time_quality, micros, self.nframes) = struct.unpack(
@@ -317,7 +304,7 @@ class Record(object):
         d0 = None
 
         if self.encoding == 10:
-            """STEIM (1) Compression?"""
+            # """STEIM (1) Compression?"""
             if c3 == 1:
                 d0 = (w3 >> 24) & 0xFF
                 if d0 > 0x7F:
@@ -333,7 +320,7 @@ class Record(object):
                     d0 -= 1
 
         elif self.encoding == 11:
-            """STEIM (2) Compression?"""
+            # """STEIM (2) Compression?"""
             if c3 == 1:
                 d0 = (w3 >> 24) & 0xFF
                 if d0 > 0x7F:
@@ -398,8 +385,7 @@ class Record(object):
         """Write the record to an already opened file."""
         if self.size > (1 << rec_len_exp):
             raise MSeedError(
-                "record is larger than requested write size: %d > %d"
-                % (self.size, 1 << rec_len_exp)
+                f"record is larger than requested write size: {self.size} > {1 << rec_len_exp}"
             )
 
         recno_str = bytes(("%06d" % (self.recno,)).encode("utf-8"))
@@ -465,7 +451,7 @@ class Record(object):
         for b in buf:
             try:
                 ba.append(b)
-            except:
+            except Exception:
                 ba.append(int.from_bytes(b, byteorder="big"))
         fd.write(ba)
 
