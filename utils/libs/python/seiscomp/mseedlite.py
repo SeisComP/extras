@@ -138,15 +138,18 @@ class Record(object):
             fd.read(_MAX_RECLEN - _FIXHEAD_LEN)
             raise MSeedNoData("non-data record")
 
-        if (
-            (self.__pdata < _FIXHEAD_LEN)
-            or (self.__pdata >= _MAX_RECLEN)
-            or (
-                (self.__pblk != 0)
-                and ((self.__pblk < _FIXHEAD_LEN) or (self.__pblk >= self.__pdata))
+        if self.__pdata >= _MAX_RECLEN:
+            raise MSeedError(
+                f"invalid pointer at {net.strip()}.{sta.strip()}.{loc.strip()}.{cha.strip()}: "
+                f"record size ({self.__pdata}) >= {_MAX_RECLEN}"
             )
+        if self.__pdata < _FIXHEAD_LEN or (
+            self.__pblk != 0
+            and ((self.__pblk < _FIXHEAD_LEN) or (self.__pblk >= self.__pdata))
         ):
-            raise MSeedError("invalid pointers")
+            raise MSeedError(
+                f"invalid pointer at {net.strip()}.{sta.strip()}.{loc.strip()}.{cha.strip()}"
+            )
 
         if self.__pblk == 0:
             blklen = 0
@@ -479,7 +482,8 @@ class Input(object):
                 yield Record(self.__fd)
 
             except EndOfData:
-                # This change follows new PEP-479, where it is explicitly forbidden to use StopIteration
+                # This change follows new PEP-479, where it is explicitly forbidden to
+                # use StopIteration
                 # raise StopIteration
                 return
 
