@@ -48,7 +48,7 @@ def _ldoy(y, m):
     _ldoy(2000, 4) = 91
 
     """
-    return _doy[m-1] + (_is_leap(y) and m >= 3)
+    return _doy[m - 1] + (_is_leap(y) and m >= 3)
 
 
 def _dy2mdy(doy, year):
@@ -105,30 +105,58 @@ class Record(object):
         if len(fixhead) < _FIXHEAD_LEN:
             raise MSeedError("unexpected end of header")
 
-        (recno_str, self.rectype, sta, loc, cha, net, bt_year, bt_doy, bt_hour,
-            bt_minute, bt_second, bt_tms, self.nsamp, self.sr_factor,
-            self.sr_mult, self.aflgs, self.cflgs, self.qflgs, self.__num_blk,
-            self.time_correction, self.__pdata, self.__pblk) = \
-            struct.unpack(">6scx5s2s3s2s2H3Bx2H2h4Bl2H", fixhead)
+        (
+            recno_str,
+            self.rectype,
+            sta,
+            loc,
+            cha,
+            net,
+            bt_year,
+            bt_doy,
+            bt_hour,
+            bt_minute,
+            bt_second,
+            bt_tms,
+            self.nsamp,
+            self.sr_factor,
+            self.sr_mult,
+            self.aflgs,
+            self.cflgs,
+            self.qflgs,
+            self.__num_blk,
+            self.time_correction,
+            self.__pdata,
+            self.__pblk,
+        ) = struct.unpack(">6scx5s2s3s2s2H3Bx2H2h4Bl2H", fixhead)
 
         if sys.version_info[0] > 2:
-            recno_str = recno_str.decode('utf-8')
-            self.rectype = self.rectype.decode('utf-8')
-            sta = sta.decode('utf-8')
-            loc = loc.decode('utf-8')
-            cha = cha.decode('utf-8')
-            net = net.decode('utf-8')
+            recno_str = recno_str.decode("utf-8")
+            self.rectype = self.rectype.decode("utf-8")
+            sta = sta.decode("utf-8")
+            loc = loc.decode("utf-8")
+            cha = cha.decode("utf-8")
+            net = net.decode("utf-8")
 
         self.header += fixhead
 
-        if ((self.rectype != 'D') and (self.rectype != 'R') and
-                (self.rectype != 'Q') and (self.rectype != 'M')):
+        if (
+            (self.rectype != "D")
+            and (self.rectype != "R")
+            and (self.rectype != "Q")
+            and (self.rectype != "M")
+        ):
             fd.read(_MAX_RECLEN - _FIXHEAD_LEN)
             raise MSeedNoData("non-data record")
 
-        if ((self.__pdata < _FIXHEAD_LEN) or (self.__pdata >= _MAX_RECLEN) or
-                ((self.__pblk != 0) and ((self.__pblk < _FIXHEAD_LEN) or
-                 (self.__pblk >= self.__pdata)))):
+        if (
+            (self.__pdata < _FIXHEAD_LEN)
+            or (self.__pdata >= _MAX_RECLEN)
+            or (
+                (self.__pblk != 0)
+                and ((self.__pblk < _FIXHEAD_LEN) or (self.__pblk >= self.__pdata))
+            )
+        ):
             raise MSeedError("invalid pointers")
 
         if self.__pblk == 0:
@@ -157,8 +185,9 @@ class Record(object):
         while pos < blklen:
             blkhead = fd.read(_BLKHEAD_LEN)
             if len(blkhead) < _BLKHEAD_LEN:
-                raise MSeedError("unexpected end of blockettes at %s" %
-                                 pos + len(blkhead))
+                raise MSeedError(
+                    "unexpected end of blockettes at %s" % pos + len(blkhead)
+                )
 
             (blktype, nextblk) = struct.unpack(">2H", blkhead)
             self.header += blkhead
@@ -167,11 +196,13 @@ class Record(object):
             if blktype == 1000:
                 blk1000 = fd.read(_BLK1000_LEN)
                 if len(blk1000) < _BLK1000_LEN:
-                    raise MSeedError("unexpected end of blockettes at %s" %
-                                     pos + len(blk1000))
+                    raise MSeedError(
+                        "unexpected end of blockettes at %s" % pos + len(blk1000)
+                    )
 
-                (self.encoding, self.byteorder, rec_len_exp) = \
-                    struct.unpack(">3Bx", blk1000)
+                (self.encoding, self.byteorder, rec_len_exp) = struct.unpack(
+                    ">3Bx", blk1000
+                )
 
                 self.__rec_len_exp_idx = self.__pblk + pos + 2
                 self.header += blk1000
@@ -180,11 +211,13 @@ class Record(object):
             elif blktype == 1001:
                 blk1001 = fd.read(_BLK1001_LEN)
                 if len(blk1001) < _BLK1001_LEN:
-                    raise MSeedError("unexpected end of blockettes at %s" %
-                                     pos + len(blk1001))
+                    raise MSeedError(
+                        "unexpected end of blockettes at %s" % pos + len(blk1001)
+                    )
 
-                (self.time_quality, micros, self.nframes) = \
-                    struct.unpack(">BbxB", blk1001)
+                (self.time_quality, micros, self.nframes) = struct.unpack(
+                    ">BbxB", blk1001
+                )
 
                 self.__micros_idx = self.__pblk + pos + 1
                 self.__nframes_idx = self.__pblk + pos + 3
@@ -249,21 +282,20 @@ class Record(object):
 
         try:
             (month, day) = _dy2mdy(bt_doy, bt_year)
-            self.begin_time = datetime.datetime(bt_year, month, day, bt_hour,
-                                                bt_minute, bt_second)
+            self.begin_time = datetime.datetime(
+                bt_year, month, day, bt_hour, bt_minute, bt_second
+            )
 
-            self.begin_time += \
-                datetime.timedelta(microseconds=bt_tms*100+micros)
+            self.begin_time += datetime.timedelta(microseconds=bt_tms * 100 + micros)
 
             if (self.nsamp != 0) and (self.fsamp != 0):
                 msAux = 1000000 * self.nsamp / self.fsamp
-                self.end_time = self.begin_time + \
-                    datetime.timedelta(microseconds=msAux)
+                self.end_time = self.begin_time + datetime.timedelta(microseconds=msAux)
             else:
                 self.end_time = self.begin_time
 
         except ValueError as e:
-            raise MSeedError("invalid time: %s" % str(e))
+            raise MSeedError(f"invalid time: {str(e)}")
 
         self.size = 1 << rec_len_exp
         if (self.size < len(self.header)) or (self.size > _MAX_RECLEN):
@@ -287,51 +319,51 @@ class Record(object):
         if self.encoding == 10:
             """STEIM (1) Compression?"""
             if c3 == 1:
-                d0 = (w3 >> 24) & 0xff
-                if d0 > 0x7f:
+                d0 = (w3 >> 24) & 0xFF
+                if d0 > 0x7F:
                     d0 -= 0x100
             elif c3 == 2:
-                d0 = (w3 >> 16) & 0xffff
-                if d0 > 0x7fff:
+                d0 = (w3 >> 16) & 0xFFFF
+                if d0 > 0x7FFF:
                     d0 -= 0x10000
             elif c3 == 3:
-                d0 = w3 & 0xffffffff
-                if d0 > 0x7fffffff:
-                    d0 -= 0xffffffff
+                d0 = w3 & 0xFFFFFFFF
+                if d0 > 0x7FFFFFFF:
+                    d0 -= 0xFFFFFFFF
                     d0 -= 1
 
         elif self.encoding == 11:
             """STEIM (2) Compression?"""
             if c3 == 1:
-                d0 = (w3 >> 24) & 0xff
-                if d0 > 0x7f:
+                d0 = (w3 >> 24) & 0xFF
+                if d0 > 0x7F:
                     d0 -= 0x100
             elif c3 == 2:
                 dnib = (w3 >> 30) & 0x3
                 if dnib == 1:
-                    d0 = w3 & 0x3fffffff
-                    if d0 > 0x1fffffff:
+                    d0 = w3 & 0x3FFFFFFF
+                    if d0 > 0x1FFFFFFF:
                         d0 -= 0x40000000
                 elif dnib == 2:
-                    d0 = (w3 >> 15) & 0x7fff
-                    if d0 > 0x3fff:
+                    d0 = (w3 >> 15) & 0x7FFF
+                    if d0 > 0x3FFF:
                         d0 -= 0x8000
                 elif dnib == 3:
-                    d0 = (w3 >> 20) & 0x3ff
-                    if d0 > 0x1ff:
+                    d0 = (w3 >> 20) & 0x3FF
+                    if d0 > 0x1FF:
                         d0 -= 0x400
             elif c3 == 3:
                 dnib = (w3 >> 30) & 0x3
                 if dnib == 0:
-                    d0 = (w3 >> 24) & 0x3f
-                    if d0 > 0x1f:
+                    d0 = (w3 >> 24) & 0x3F
+                    if d0 > 0x1F:
                         d0 -= 0x40
                 elif dnib == 1:
-                    d0 = (w3 >> 25) & 0x1f
-                    if d0 > 0xf:
+                    d0 = (w3 >> 25) & 0x1F
+                    if d0 > 0xF:
                         d0 -= 0x20
                 elif dnib == 2:
-                    d0 = (w3 >> 24) & 0xf
+                    d0 = (w3 >> 24) & 0xF
                     if d0 > 0x7:
                         d0 -= 0x10
 
@@ -356,7 +388,7 @@ class Record(object):
         Check if rec.nframes * 64 <= len(data)?
         """
         (self.Xn,) = struct.unpack(">l", rec.data[8:12])
-        self.data += rec.data[:rec.nframes * 64]
+        self.data += rec.data[: rec.nframes * 64]
         self.nframes += rec.nframes
         self.nsamp += rec.nsamp
         self.size = len(self.header) + len(self.data)
@@ -365,16 +397,20 @@ class Record(object):
     def write(self, fd, rec_len_exp):
         """Write the record to an already opened file."""
         if self.size > (1 << rec_len_exp):
-            raise MSeedError("record is larger than requested write size: %d > %d" % (self.size, 1 << rec_len_exp))
+            raise MSeedError(
+                "record is larger than requested write size: %d > %d"
+                % (self.size, 1 << rec_len_exp)
+            )
 
-        recno_str = bytes(("%06d" % (self.recno,)).encode('utf-8'))
-        sta = bytes(("%-5.5s" % (self.sta,)).encode('utf-8'))
-        loc = bytes(("%-2.2s" % (self.loc,)).encode('utf-8'))
-        cha = bytes(("%-3.3s" % (self.cha,)).encode('utf-8'))
-        net = bytes(("%-2.2s" % (self.net,)).encode('utf-8'))
+        recno_str = bytes(("%06d" % (self.recno,)).encode("utf-8"))
+        sta = bytes(("%-5.5s" % (self.sta,)).encode("utf-8"))
+        loc = bytes(("%-2.2s" % (self.loc,)).encode("utf-8"))
+        cha = bytes(("%-3.3s" % (self.cha,)).encode("utf-8"))
+        net = bytes(("%-2.2s" % (self.net,)).encode("utf-8"))
         bt_year = self.begin_time.year
-        bt_doy = _mdy2dy(self.begin_time.month, self.begin_time.day,
-                         self.begin_time.year)
+        bt_doy = _mdy2dy(
+            self.begin_time.month, self.begin_time.day, self.begin_time.year
+        )
         bt_hour = self.begin_time.hour
         bt_minute = self.begin_time.minute
         bt_second = self.begin_time.second + self.leap
@@ -382,40 +418,63 @@ class Record(object):
         micros = self.begin_time.microsecond % 100
 
         # This is just to make it Python 2 AND 3 compatible (str vs. bytes)
-        rectype = self.rectype.encode('utf-8') if sys.version_info[0] > 2 \
-            else self.rectype
+        rectype = (
+            self.rectype.encode("utf-8") if sys.version_info[0] > 2 else self.rectype
+        )
 
-        buf = struct.pack(">6s2c5s2s3s2s2H3Bx2H2h4Bl2H", recno_str,
-                          rectype, b' ', sta, loc, cha, net, bt_year,
-                          bt_doy, bt_hour, bt_minute, bt_second, bt_tms,
-                          self.nsamp, self.sr_factor, self.sr_mult, self.aflgs,
-                          self.cflgs, self.qflgs, self.__num_blk,
-                          self.time_correction, self.__pdata, self.__pblk)
+        buf = struct.pack(
+            ">6s2c5s2s3s2s2H3Bx2H2h4Bl2H",
+            recno_str,
+            rectype,
+            b" ",
+            sta,
+            loc,
+            cha,
+            net,
+            bt_year,
+            bt_doy,
+            bt_hour,
+            bt_minute,
+            bt_second,
+            bt_tms,
+            self.nsamp,
+            self.sr_factor,
+            self.sr_mult,
+            self.aflgs,
+            self.cflgs,
+            self.qflgs,
+            self.__num_blk,
+            self.time_correction,
+            self.__pdata,
+            self.__pblk,
+        )
         fd.write(buf)
 
         buf = list(self.header[_FIXHEAD_LEN:])
 
         if self.__rec_len_exp_idx is not None:
-            buf[self.__rec_len_exp_idx - _FIXHEAD_LEN] = \
-                struct.pack(">B", rec_len_exp)
+            buf[self.__rec_len_exp_idx - _FIXHEAD_LEN] = struct.pack(">B", rec_len_exp)
 
         if self.__micros_idx is not None:
             buf[self.__micros_idx - _FIXHEAD_LEN] = struct.pack(">b", micros)
 
         if self.__nframes_idx is not None:
-            buf[self.__nframes_idx - _FIXHEAD_LEN] = \
-                struct.pack(">B", self.nframes)
+            buf[self.__nframes_idx - _FIXHEAD_LEN] = struct.pack(">B", self.nframes)
 
         ba = bytearray()
         for b in buf:
             try:
                 ba.append(b)
             except:
-                ba.append(int.from_bytes(b, byteorder='big'))
+                ba.append(int.from_bytes(b, byteorder="big"))
         fd.write(ba)
 
-        buf = self.data[:4] + struct.pack(">ll", self.X0, self.Xn) + \
-            self.data[12:] + ((1 << rec_len_exp) - self.size) * b'\0'
+        buf = (
+            self.data[:4]
+            + struct.pack(">ll", self.X0, self.Xn)
+            + self.data[12:]
+            + ((1 << rec_len_exp) - self.size) * b"\0"
+        )
 
         fd.write(buf)
 
@@ -440,4 +499,3 @@ class Input(object):
 
             except MSeedNoData:
                 pass
-
