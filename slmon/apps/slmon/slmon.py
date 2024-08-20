@@ -128,21 +128,22 @@ class StatusDict(dict):
         lines.sort()
         f.write('\n'.join(lines)+'\n')
 
-
 def colorLegend(htmlfile):
     htmlfile.write("<p><center>Latencies:<br>\n" \
         "<table cellpadding='2' cellspacing='1' border='0'" \
-	      " bgcolor='#000000'>\n<tr>\n" \
-        "<td bgcolor='#cc99ff'>&nbsp;&lt;30 m&nbsp;</td>\n" \
-        "<td bgcolor='#3399ff'>&nbsp;&lt; 1 h&nbsp;</td>\n" \
-        "<td bgcolor='#00ff00'>&nbsp;&lt; 2 h&nbsp;</td>\n" \
-        "<td bgcolor='#ffff00'>&nbsp;&lt; 6 h&nbsp;</td>\n" \
-        "<td bgcolor='#ff9966'>&nbsp;&lt; 1 d&nbsp;</td>\n" \
-        "<td bgcolor='#ff3333'>&nbsp;&lt; 2 d&nbsp;</td>\n" \
-        "<td bgcolor='#ffcccc'>&nbsp;&lt; 3 d&nbsp;</td>\n" \
-        "<td bgcolor='#cccccc'>&nbsp;&lt; 4 d&nbsp;</td>\n" \
-        "<td bgcolor='#999999'>&nbsp;&lt; 5 d&nbsp;</td>\n" \
-        "<td bgcolor='#666666'>&nbsp;&gt; 5 d&nbsp;</td>\n" \
+              " bgcolor='#000000'>\n<tr>\n" \
+        "<td bgcolor='#FFFFFF'><b>&lt; 1 min</b></td>\n" \
+        "<td bgcolor='#EBD6FF'><b>&ge; 1 min</b></td>\n" \
+        "<td bgcolor='#9470BB'><font color='#FFFFFF'><b>&gt; 10 min</b></font></td>\n" \
+        "<td bgcolor='#3399FF'><font color='#FFFFFF'><b>&gt; 30 min</b></font></td>\n" \
+        "<td bgcolor='#00FF00'><b>&gt; 1 hour</b></td>\n" \
+        "<td bgcolor='#FFFF00'><b>&gt; 2 hours</b></td>\n" \
+        "<td bgcolor='#FF9966'><b>&gt; 6 hours</b></td>\n" \
+        "<td bgcolor='#FF3333'><b>&gt; 1 day</b></td>\n" \
+        "<td bgcolor='#FFB3B3'><b>&gt; 2 days</b></td>\n" \
+        "<td bgcolor='#CCCCCC'><b>&gt; 3 days</b></td>\n" \
+        "<td bgcolor='#999999'><font color='#FFFFFF'><b>&gt; 4 days</b></font></td>\n" \
+        "<td bgcolor='#666666'><font color='#FFFFFF'><b>&gt; 5 days</b></font></td>\n" \
         "</tr>\n</table>\n</center></p>\n")
 
 # encodes an email address so that it cannot (easily) be extracted
@@ -162,16 +163,18 @@ def pageTrailer(htmlfile, config):
 
 def getColor(delta):
     delay = total_seconds(delta)
-    if   delay >432000: return '#666666'
-    if   delay >345600: return '#999999'
-    if   delay >259200: return '#cccccc'
-    if   delay >172800: return '#ffcccc'
-    if   delay > 86400: return '#ff3333'
-    elif delay > 21600: return '#ff9966'
-    elif delay >  7200: return '#ffff00'
-    elif delay >  3600: return '#00ff00'
-    elif delay >  1800: return '#3399ff'
-    else:               return '#cc99ff'
+    if   delay > 432000: return '#666666'  # > 5 days
+    elif delay > 345600: return '#999999'  # > 4 days
+    elif delay > 259200: return '#CCCCCC'  # > 3 days
+    elif delay > 172800: return '#FFB3B3'  # > 2 days
+    elif delay >  86400: return '#FF3333'  # > 1 day
+    elif delay >  21600: return '#FF9966'  # > 6 hours
+    elif delay >   7200: return '#FFFF00'  # > 2 hours
+    elif delay >   3600: return '#00FF00'  # > 1 hour
+    elif delay >   1800: return '#3399FF'  # > 30 minutes
+    elif delay >    600: return '#9470BB'  # > 10 minutes
+    elif delay >     60: return '#EBD6FF'  # >= 1 minute
+    else:                return '#FFFFFF'  # < 1 minute
 
 TDdummy = "<td align='center' bgcolor='%s'><tt>n/a</tt></td>"
 
