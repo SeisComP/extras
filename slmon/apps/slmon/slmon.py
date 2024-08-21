@@ -132,7 +132,7 @@ def colorLegend(htmlfile):
     htmlfile.write("<p><center>Latencies:<br>\n" \
         "<table cellpadding='2' cellspacing='1' border='0'" \
               " bgcolor='#000000'>\n<tr>\n" \
-        "<td bgcolor='#FFFFFF'><b>&lt;= 1 min</b></td>\n" \
+        "<td bgcolor='#FFFFFF'><b>&le; 1 min</b></td>\n" \
         "<td bgcolor='#EBD6FF'><b>&gt; 1 min</b></td>\n" \
         "<td bgcolor='#9470BB'><font color='#FFFFFF'><b>&gt; 10 min</b></font></td>\n" \
         "<td bgcolor='#3399FF'><font color='#FFFFFF'><b>&gt; 30 min</b></font></td>\n" \
