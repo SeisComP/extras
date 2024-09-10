@@ -132,18 +132,18 @@ def colorLegend(htmlfile):
     htmlfile.write("<p><center>Latencies:<br>\n" \
         "<table cellpadding='2' cellspacing='1' border='0'" \
               " bgcolor='#000000'>\n<tr>\n" \
-        "<td bgcolor='#FFFFFF'><b>&le; 1 min</b></td>\n" \
-        "<td bgcolor='#EBD6FF'><b>&gt; 1 min</b></td>\n" \
-        "<td bgcolor='#9470BB'><font color='#FFFFFF'><b>&gt; 10 min</b></font></td>\n" \
-        "<td bgcolor='#3399FF'><font color='#FFFFFF'><b>&gt; 30 min</b></font></td>\n" \
-        "<td bgcolor='#00FF00'><b>&gt; 1 hour</b></td>\n" \
-        "<td bgcolor='#FFFF00'><b>&gt; 2 hours</b></td>\n" \
-        "<td bgcolor='#FF9966'><b>&gt; 6 hours</b></td>\n" \
-        "<td bgcolor='#FF3333'><b>&gt; 1 day</b></td>\n" \
-        "<td bgcolor='#FFB3B3'><b>&gt; 2 days</b></td>\n" \
-        "<td bgcolor='#CCCCCC'><b>&gt; 3 days</b></td>\n" \
-        "<td bgcolor='#999999'><font color='#FFFFFF'><b>&gt; 4 days</b></font></td>\n" \
-        "<td bgcolor='#666666'><font color='#FFFFFF'><b>&gt; 5 days</b></font></td>\n" \
+        "<td bgcolor='#FFFFFF'><b>&le; 1 min&nbsp</b></td>\n" \
+        "<td bgcolor='#EBD6FF'><b>&gt; 1 min&nbsp</b></td>\n" \
+        "<td bgcolor='#9470BB'><font color='#FFFFFF'><b>&gt; 10 min&nbsp</b></font></td>\n" \
+        "<td bgcolor='#3399FF'><font color='#FFFFFF'><b>&gt; 30 min&nbsp</b></font></td>\n" \
+        "<td bgcolor='#00FF00'><b>&gt; 1 hour&nbsp</b></td>\n" \
+        "<td bgcolor='#FFFF00'><b>&gt; 2 hours&nbsp</b></td>\n" \
+        "<td bgcolor='#FF9966'><b>&gt; 6 hours&nbsp</b></td>\n" \
+        "<td bgcolor='#FF3333'><b>&gt; 1 day&nbsp</b></td>\n" \
+        "<td bgcolor='#FFB3B3'><b>&gt; 2 days&nbsp</b></td>\n" \
+        "<td bgcolor='#CCCCCC'><b>&gt; 3 days&nbsp</b></td>\n" \
+        "<td bgcolor='#999999'><font color='#FFFFFF'><b>&gt; 4 days&nbsp</b></font></td>\n" \
+        "<td bgcolor='#666666'><font color='#FFFFFF'><b>&gt; 5 days&nbsp</b></font></td>\n" \
         "</tr>\n</table>\n</center></p>\n")
 
 # encodes an email address so that it cannot (easily) be extracted
