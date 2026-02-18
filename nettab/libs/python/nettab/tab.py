@@ -90,7 +90,7 @@ class Tab(object):
 		self.ias = ias
 
 	def _loadDatabase(self, dbUrl):
-		m = re.match("(?P<dbDriverName>^.*):\/\/(?P<dbAddress>.+?:.+?@.+?\/.+$)", dbUrl)
+		m = re.match("(?P<dbDriverName>^.*)://(?P<dbAddress>.+?:.+?@.+?/.+$)", dbUrl)
 		if not m:
 			raise Exception("error in parsing SC3 DB url")
 		
@@ -128,7 +128,7 @@ class Tab(object):
 		for f in glob.glob(os.path.join(folder, "*.xml")):
 			ar = seiscomp.io.XMLArchive()
 			ar.open(f)
-			inventory = seiscomp.datamodel.Inventory_Cast(ar.readObject())
+			inventory = seiscomp.datamodel.Inventory.Cast(ar.readObject())
 			ar.close()
 
 			if inventory:
