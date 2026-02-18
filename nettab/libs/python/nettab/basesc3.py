@@ -120,7 +120,7 @@ class sc3(object):
             }
         },
         'channel': {
-            'creator': seiscomp.datamodel.Stream_Create,
+            'creator': seiscomp.datamodel.Stream.Create,
             'attributes': {
                 'Code':                   { 'validator': sc3.getString },
                 'Start':                  { 'validator': sc3.getDate },
@@ -147,7 +147,7 @@ class sc3(object):
             } 
         },
         'location': {
-            'creator': seiscomp.datamodel.SensorLocation_Create,
+            'creator': seiscomp.datamodel.SensorLocation.Create,
             'attributes': {
                 'Code':                   { 'validator': sc3.getString },
                 'Start':                  { 'validator': sc3.getDate },
@@ -158,7 +158,7 @@ class sc3(object):
                 }
         },
         'station': {
-            'creator': seiscomp.datamodel.Station_Create,
+            'creator': seiscomp.datamodel.Station.Create,
             'attributes': {
                 'Code':                   { 'validator': sc3.getString },
                 'Start':                  { 'validator': sc3.getDate },
@@ -179,7 +179,7 @@ class sc3(object):
             }
         },
         'network': {
-            'creator': seiscomp.datamodel.Network_Create,
+            'creator': seiscomp.datamodel.Network.Create,
             'attributes': {
                 'Code':                   { 'validator': sc3.getString },
                 'Start':                  { 'validator': sc3.getDate },
@@ -198,7 +198,7 @@ class sc3(object):
             }
         },
         'stationGroup': {
-            'creator': seiscomp.datamodel.StationGroup_Create,
+            'creator': seiscomp.datamodel.StationGroup.Create,
             'attributes': {
                 'Code':                   { 'validator': sc3.getString },
                 'Start':                  { 'validator': sc3.getDate },
@@ -217,7 +217,7 @@ class sc3(object):
             }
         },
         'datalogger': {
-            'creator': seiscomp.datamodel.Datalogger_Create,
+            'creator': seiscomp.datamodel.Datalogger.Create,
             'attributes': {
                 'Name':                   { 'validator': sc3.getString },
                 'Description':            { 'validator': sc3.getString },
@@ -243,7 +243,7 @@ class sc3(object):
             }
         },
         'fir': {
-            'creator': seiscomp.datamodel.ResponseFIR_Create,
+            'creator': seiscomp.datamodel.ResponseFIR.Create,
             'attributes': {
                 "Name":                   { 'validator': sc3.getString },
                 "Gain":                   { 'validator': float },
@@ -257,7 +257,7 @@ class sc3(object):
             }
         },
         'paz': {
-            'creator': seiscomp.datamodel.ResponsePAZ_Create,
+            'creator': seiscomp.datamodel.ResponsePAZ.Create,
             'attributes': {
                 'Name':                   { 'validator': sc3.getString },
                 'Description':            { 'validator': sc3.getString },
@@ -274,7 +274,7 @@ class sc3(object):
             }
         },
         'sensor': {
-            'creator': seiscomp.datamodel.Sensor_Create,
+            'creator': seiscomp.datamodel.Sensor.Create,
             'attributes': {
                 'Name':                   { 'validator': sc3.getString },
                 'Description':            { 'validator': sc3.getString },
