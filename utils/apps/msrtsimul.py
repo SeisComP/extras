@@ -10,6 +10,12 @@ import calendar
 import math
 import stat
 
+if sys.version_info >= (3, 11, 0):
+    from datetime import UTC
+else:
+    from datetime import timezone
+    UTC = timezone.utc
+
 from getopt import gnu_getopt, GetoptError
 from seiscomp import mseedlite as mseed
 
@@ -279,7 +285,7 @@ Check if SeedLink is running and configured for real-time playback.
 
         time_diff = None
         print(
-            f"Starting msrtsimul at {datetime.datetime.now(datetime.UTC)}",
+            f"Starting msrtsimul at {datetime.datetime.now(UTC)}",
             file=sys.stderr,
         )
         for rec in inp:
@@ -293,7 +299,7 @@ starting on {str(rec.begin_time)}: length != 512 Bytes.",
             if time_diff is None:
                 ms = 1000000.0 * (rec.nsamp / rec.fsamp)
                 time_diff = (
-                    datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+                    datetime.datetime.now(UTC).replace(tzinfo=None)
                     - rec.begin_time
                     - datetime.timedelta(microseconds=ms)
                 )
