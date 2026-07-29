@@ -46,6 +46,29 @@ def timeparse(t):
     return _timeparse(t, "%Y/%m/%d %H:%M:%S")
 
 
+def _die_with_parent():
+    """preexec_fn: ask the kernel to SIGKILL this child the instant its
+    parent process ends, for any reason (normal exit, crash, kill -9,
+    OOM), not just a graceful shutdown.
+
+    Without this, __del__() below is the only thing that stops the
+    'slinktool' child -- and __del__() only runs if the parent gets to
+    finish garbage collection. If the parent is killed abruptly, the
+    child is reparented to init and keeps its SeedLink connection open
+    forever. Every such leaked connection counts against the source IP
+    on servers that cap simultaneous connections per client, so enough
+    of them piling up over repeated crashes/restarts eventually makes
+    the server refuse or stall new connections from this host.
+    """
+    try:
+        import ctypes
+
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, 9)
+    except Exception:
+        pass  # best effort; e.g. not available on non-Linux platforms
+
+
 class Input(mseed.Input):
 
     def __init__(self, server, streams,
@@ -87,8 +110,11 @@ class Input(mseed.Input):
             args += ["-nt", "%d" % int(timeout)]
         
         args.append(server)
-        # start 'slinktool' as sub-process
-        self.popen = subprocess.Popen(args, stdout=subprocess.PIPE, shell=False)
+        # start 'slinktool' as sub-process. preexec_fn=_die_with_parent
+        # guarantees the OS kills this child if we die unexpectedly,
+        # even though __del__() below is unreliable for that case.
+        self.popen = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                       shell=False, preexec_fn=_die_with_parent)
         infile = self.popen.stdout
 
         mseed.Input.__init__(self, infile)
@@ -101,138 +127,16 @@ class Input(mseed.Input):
         sys.stderr.flush()
 
         slinktool_pid = self.popen.pid
-        # It would of course be much better to send SIGTERM,
-        # but somehow slinktool often appears to ignore it.
-        # XXX Need to figure out why, and perhaps fix it (not critical).
+        # slinktool installs its SIGTERM handler with SA_RESTART, so if it
+        # is currently blocked inside connect() (e.g. a slow/unreachable
+        # server) the kernel transparently restarts that call and the
+        # signal is effectively swallowed until the call unblocks on its
+        # own, which can take minutes. SIGKILL avoids that, at the cost
+        # of skipping a clean SeedLink-level disconnect.
         self.popen.kill()
         self.popen.communicate()
 #       mseed.Input.__del__(self) # closes the input file
 
-
-
-class Input2(mseed.Input):
-
-    def __init__(self, server, streams, stime=None, etime=None, verbose=0):
-
-        """
-        XXX information not uptodate!!! XXX
-        
-        'streams' must be a dict containing tuples of (stime, etime),
-        with the key being the stream_id and stime and etime being
-        the starting and end time of the time window, respectively.
-        The times must be seis.Time objects. For instance
-
-        stime = seis.Time(...)
-        etime = seis.Time(...)
-        streams["GE.KBS.00.BHZ.D"] = (stime, etime)
-
-        It is more efficient to request the same time interval for
-        all streams. Wildcards for the channels are allowed. If
-        stime is None, only new data are retrieved as they come in.
-        """
-
-        streams = [ "%-3s %5s %s%3s.D" % tuple(s.split(".")[:4])
-                                         for s in streams ]
-        streams.sort()
-
-        self.tmp = tempfile.NamedTemporaryFile(mode="w", prefix="slinktool.")
-        self.tmp.write("\n".join(streams)+"\n")
-        sys.stderr.write("\n".join(streams)+"\n")
-        self.tmp.flush()
-
-        cmd = "slinktool -l %s -o -" % self.tmp.name
-        if stime:
-            assert isinstance(stime, seis.Time)
-            cmd += " -tw %d,%d,%d,%d,%d,%d:" % stime.asDate
-            if etime:
-                assert isinstance(etime, seis.Time)
-                cmd += "%d,%d,%d,%d,%d,%d" % etime.asDate
-        cmd = cmd + "%s '%s'" % (verbose*" -v", server)
-
-        infile = os.popen(cmd)
-        
-        mseed.Input.__init__(self, infile)
-
-
-def available(server="localhost:18000",
-              time_window=None, stream_ids=None, verbose=0):
- 
-    """ 
-    Connects to server and returns a dictionary of lists of available
-    time windows as tuples of (start_time, end_time) for each available
-    stream. The stream set can be limited by specifying a list of
-    stream_ids in the format usual format, i.e. net.sta.loc.cha.type,
-    e.g. "GE.KBS.00.BHZ.D".
-    Note that often the returned lists contain only one time tuple,
-    corresponding to one contiguous time window available.
-
-    NEW:
-    The search for available data can be limited to a time window by
-    specifying the "time_window" parameter, which must be a tuple
-    containing the starting and end time as seis.Time objects.
-    """
- 
-    import re
-
-    if time_window:
-        stime, etime = time_window
-        assert stime <= etime
-    else:
-        stime, etime = None, None
-
-    cmd = "slinktool -Q %s %s " % (verbose*"-v ", server)
-    infile  = os.popen(cmd)
-    windows = {}
-
-    # parse the output of "slinktool -Q"
-    # It is assumed that the lines consist of the fields
-    # net,sta,[loc,], cha, type, date1, time1, "-", date2, time2
-    # Since the location code (loc) may or may not be present, we
-    # determine the position of the dash "-" to determine where the
-    # other fields are.
-    regex = re.compile("^[A-Z][A-Z]\ [A-Z].*[12][0-9]{3}(/[0-9]{2}){2}.*$")
-    for line in infile: 
-        if regex.match(line): # line containing a time window, a bit crude
-
-            line = line.split()
-            try:
-                dash = line.index("-")
-            except ValueError:
-                continue
-
-            if dash==7: # location code is present
-                    loc = line[2]
-            else:   loc = ""
-
-            net, sta, cha, typ = line[0], line[1], line[dash-4], line[dash-3]
- 
-            stream_id = "%s.%s.%s.%s.%s" % (net, sta, loc, cha, typ)
- 
-            if stream_ids and stream_id not in stream_ids:
-                continue
-            
-            t1  = seis.Time("%s %s" % (line[dash-2], line[dash-1]))
-            t2  = seis.Time("%s %s" % (line[dash+1], line[dash+2])) 
-
-            if stime and t2<stime or etime and t1>etime:
-                continue # non-overlapping time windows
-
-            if stime and t1<stime:
-                t1 = stime
-            if etime and t2>etime:
-                t2 = etime
-
-            if not stream_id in windows:
-                windows[stream_id] = []
-
-            windows[stream_id].append((t1,t2))
-
-        elif verbose:
-            # probably some diagnostic output
-            sys.stdout.write("%s\n" % line.strip())
- 
-    return windows
- 
 
 def server_version(host, port=18000):
 

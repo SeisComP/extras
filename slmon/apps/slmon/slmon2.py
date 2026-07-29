@@ -1,7 +1,7 @@
 #!/usr/bin/env seiscomp-python
 
 from getopt import getopt, GetoptError
-from time import time, gmtime
+from time import time, gmtime, sleep
 from datetime import datetime
 import os
 import sys
@@ -9,6 +9,7 @@ import signal
 import glob
 import re
 import json
+import threading
 
 from seiscomp.myconfig import MyConfig
 import seiscomp.slclient
@@ -44,7 +45,8 @@ def load_station_coordinates(config):
         station = station_info['station']
 
         try:
-            with urlopen(base_url + f"station/1/query?net={network}&sta={station}&format=text") as fp:
+            url = base_url + f"station/1/query?net={network}&sta={station}&format=text"
+            with urlopen(url, timeout=10) as fp:
                 fp.readline()
                 location_info = dict(zip(('lat', 'lon', 'elevation'), map(float, fp.readline().split(b'|')[2:5])))
 
@@ -130,27 +132,36 @@ class StatusDict(dict):
         # regex = re.compile("[SLBVEH][HNLG][ZNE123]")
         regex = regexStreams
         for line in f:
-            net_sta = line[:2].strip() + "_" + line[3:8].strip()
-            if not net_sta in stations:
-                continue
-            typ = line[16]
-            if typ != "D":
-                continue
-            cha = line[12:15].strip()
-            if not regex.match(cha):
-                continue
+            # A truncated/corrupted 'slinktool -Q' response (e.g. from a
+            # network hiccup mid-transfer) can hand us a short or garbled
+            # line here. Skip it instead of letting an IndexError/ValueError
+            # crash the whole bootstrap before slmon2 even starts.
+            try:
+                net_sta = line[:2].strip() + "_" + line[3:8].strip()
+                if not net_sta in stations:
+                    continue
+                typ = line[16]
+                if typ != "D":
+                    continue
+                cha = line[12:15].strip()
+                if not regex.match(cha):
+                    continue
 
-            d = Status()
-            d.net = line[0: 2].strip()
-            d.sta = line[3: 8].strip()
-            d.loc = line[9:11].strip()
-            d.cha = line[12:15]
-            d.typ = line[16]
-            d.last_data = seiscomp.slclient.timeparse(line[47:70])
-            d.last_feed = d.last_data
-            sec = "%s_%s" % (d.net, d.sta)
-            sec = "%s.%s.%s.%s.%c" % (d.net, d.sta, d.loc, d.cha, d.typ)
-            self[sec] = d
+                d = Status()
+                d.net = line[0: 2].strip()
+                d.sta = line[3: 8].strip()
+                d.loc = line[9:11].strip()
+                d.cha = line[12:15]
+                d.typ = line[16]
+                d.last_data = seiscomp.slclient.timeparse(line[47:70])
+                d.last_feed = d.last_data
+                sec = "%s_%s" % (d.net, d.sta)
+                sec = "%s.%s.%s.%s.%c" % (d.net, d.sta, d.loc, d.cha, d.typ)
+                self[sec] = d
+            except (IndexError, ValueError) as e:
+                print(f"skipping malformed 'slinktool -Q' line: {line!r} ({e})",
+                      file=sys.stderr)
+                continue
 
     def read(self, source):
         """
@@ -257,8 +268,15 @@ class StatusDict(dict):
 
             # Get latency information
             now = datetime.utcnow()
-            latency_data = now - value.last_data
-            latency_seconds = total_seconds(latency_data)
+            if value.last_data:
+                latency_seconds = total_seconds(now - value.last_data)
+            else:
+                # No valid last-data timestamp (e.g. a skipped malformed
+                # line from 'slinktool -Q'); treat as maximally stale
+                # instead of crashing on `now - None`. Use a large finite
+                # value, not float('inf'), since this ends up in JSON
+                # output and Infinity isn't valid JSON.
+                latency_seconds = 10**9
 
             # Extract channel type (first two characters, e.g., 'LH', 'BH', 'HH', 'EH')
             channel_type = value.cha[:2] if len(value.cha) >= 2 else "other"
@@ -1553,43 +1571,6 @@ function setupEventListeners() {
     });
 }
 
-// Function to set active view based on URL or saved preference
-function setActiveView() {
-    // Extract view from URL if present
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlView = urlParams.get('view');
-
-    if (urlView && ['table', 'grid', 'map'].includes(urlView)) {
-        viewMode = urlView;
-    }
-
-    // Set active class on the appropriate link
-    document.querySelectorAll('.view-toggle a').forEach(link => {
-        if (link.getAttribute('data-view') === viewMode) {
-            link.classList.add('active');
-        } else {
-            link.classList.remove('active');
-        }
-    });
-
-    // Show the appropriate view container
-    document.querySelectorAll('.view-container').forEach(container => {
-        if (container.id === `${viewMode}-view`) {
-            container.style.display = 'block';
-        } else {
-            container.style.display = 'none';
-        }
-    });
-
-    // Initialize map if needed
-    if (viewMode === 'map' && !mapInitialized && typeof L !== 'undefined') {
-        initializeMap();
-    }
-
-    // Save preference
-    localStorage.setItem('seedlink-view-mode', viewMode);
-}
-
 // Function to switch between views
 function switchView(view) {
     viewMode = view;
@@ -2349,7 +2330,7 @@ function updateMapMarkersFilter(network, status) {
     }
 }
 
-// Enhanced version of the setActiveView function to handle map initialization
+// Sets active view based on URL or saved preference, including map init
 function setActiveView() {
     // Extract view from URL if present
     const urlParams = new URLSearchParams(window.location.search);
@@ -3162,7 +3143,7 @@ def generate_main_html(config, status):
     html += f"""
         <script>
             //Map configuration settings
-            windows.mapSettings = {json.dumps(map_settings)};
+            window.mapSettings = {json.dumps(map_settings)};
         </script>
         <div class="filters">
             <div class="filter-group">
@@ -3385,11 +3366,21 @@ def generate_station_html(net_sta, config, status):
         tim1 = status[label].last_data
         tim2 = status[label].last_feed
 
-        lat1, lat2, lat3 = now-tim1, now-tim2, tim2-tim1
-        col1, col2, col3 = getColor(lat1), getColor(lat2), getColor(lat3)
+        if tim1 and tim2:
+            lat1, lat2, lat3 = now-tim1, now-tim2, tim2-tim1
+            col1, col2, col3 = getColor(lat1), getColor(lat2), getColor(lat3)
 
-        if lat1 == lat2:
-            lat2 = lat3 = None
+            if lat1 == lat2:
+                # Feed latency / diff are redundant when last_feed ==
+                # last_data; blank the cells and drop their (now stale)
+                # background colors along with them.
+                lat2 = lat3 = None
+                col2 = col3 = ''
+        else:
+            # Missing timestamp (e.g. a skipped malformed 'slinktool -Q'
+            # line) -- avoid crashing on datetime arithmetic with None.
+            lat1 = lat2 = lat3 = None
+            col1 = col2 = col3 = '#666666'
 
         if label[-2] == '.' and label[-1] in "DE":
             label = label[:-2]
@@ -3648,25 +3639,67 @@ def main():
     # Generate initial files
     generate_all_files(config, status)
 
-    # Set up the next time to generate files
-    nextTimeGenerateHTML = time()
+    refresh_secs = int(config['setup']['refresh'])
+
+    # Network timeout for the slinktool subprocess (-nt). Without this,
+    # slinktool has no way to notice a stalled/dead SeedLink connection and
+    # 'for rec in input' below can block forever with no self-recovery.
+    network_timeout = int(config['setup'].get('network_timeout', max(120, 2 * refresh_secs)))
+
+    # Regeneration used to happen only inside the loop below, gated on a
+    # freshly-received record. That means a station (or the whole feed)
+    # going completely silent -- the exact outage this tool exists to
+    # detect -- never triggered a re-render, so the dashboard just froze
+    # on the last-good snapshot instead of showing growing latencies.
+    # A background timer decouples regeneration from record arrival.
+    regen_lock = threading.Lock()
+
+    def safe_generate_all_files():
+        # Skip (rather than queue) if a previous run is still in flight,
+        # so slow/overlapping regenerations can't pile up or race on the
+        # same output files.
+        if not regen_lock.acquire(blocking=False):
+            return
+        try:
+            generate_all_files(config, status)
+        except Exception as e:
+            print(f"ERROR regenerating files: {e}", file=sys.stderr)
+        finally:
+            regen_lock.release()
+
+    def periodic_regenerate():
+        while True:
+            sleep(refresh_secs)
+            safe_generate_all_files()
+
+    regen_thread = threading.Thread(target=periodic_regenerate, daemon=True)
+    regen_thread.start()
 
     print("setting up connection to SeedLink server '%s'" % server)
 
     # Connect to the SeedLink server and start receiving data
-    input = seiscomp.slclient.Input(server, [(s[k]['net'], s[k]['sta'], "", "???") for k in s])
+    input = seiscomp.slclient.Input(server, [(s[k]['net'], s[k]['sta'], "", "???") for k in s],
+                                     timeout=network_timeout)
     for rec in input:
         id = '.'.join([rec.net, rec.sta, rec.loc, rec.cha, rec.rectype])
 
-        try:
-            status[id].last_data = rec.end_time
-            status[id].last_feed = datetime.utcnow()
-        except:
+        if id not in status:
+            # A channel that wasn't part of the initial 'slinktool -Q'
+            # snapshot (station was down at startup, or started a new
+            # channel since). Register it instead of silently dropping it
+            # forever via the old bare except-KeyError -- that used to mean
+            # a recovered/new station would never appear until slmon2 was
+            # restarted.
+            if rec.rectype != 'D' or not regexStreams.match(rec.cha):
+                continue
+            d = Status()
+            d.net, d.sta, d.loc, d.cha, d.typ = rec.net, rec.sta, rec.loc, rec.cha, rec.rectype
+            d.last_data = d.last_feed = rec.end_time
+            status[id] = d
             continue
 
-        if time() > nextTimeGenerateHTML:
-            generate_all_files(config, status)
-            nextTimeGenerateHTML = time() + int(config['setup']['refresh'])
+        status[id].last_data = rec.end_time
+        status[id].last_feed = datetime.utcnow()
 
 
 if __name__ == "__main__":
