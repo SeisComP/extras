@@ -1549,6 +1549,26 @@ function esc(s) {
         .replace(/"/g, '&quot;');
 }
 
+// Leaflet plots raw longitude on a single, unwrapped copy of the world, so
+// a station at e.g. -169 (Samoa/Tonga area) renders numerically far from
+// a Pacific-centered map (lon ~134) even though it's geographically just
+// across the +/-180 antimeridian from it -- it ends up drawn near the
+// Americas instead of next to Australia/NZ/Fiji. Shift by +/-360 until
+// the longitude is within 180 degrees of the map's reference point so
+// geographically close stations stay numerically close.
+function normalizeLongitude(lon, refLon) {
+    let normalized = lon;
+    while (normalized - refLon > 180) normalized -= 360;
+    while (normalized - refLon < -180) normalized += 360;
+    return normalized;
+}
+
+function mapRefLon() {
+    return (window.mapSettings && window.mapSettings.center && typeof window.mapSettings.center.lon === 'number')
+        ? window.mapSettings.center.lon
+        : 0;
+}
+
 // Function to initialize the application
 document.addEventListener('DOMContentLoaded', function() {
     // Load saved preferences
@@ -2014,9 +2034,12 @@ function updateMapMarkers() {
         validCoordinates = true;
         const lat = station.coordinates.lat;
         const lon = station.coordinates.lon;
+        // Only the plotted position needs the antimeridian-normalized
+        // longitude; popups/labels should keep showing the real value.
+        const plotLon = normalizeLongitude(lon, mapRefLon());
 
         // Add to bounds for auto-zooming
-        bounds.extend([lat, lon]);
+        bounds.extend([lat, plotLon]);
 
         // Create marker with appropriate color based on status
         const markerColor = getStatusColor(station.status);
@@ -2034,7 +2057,7 @@ function updateMapMarkers() {
             iconAnchor: [9, 9]
         });
 
-        const marker = L.marker([lat, lon], {
+        const marker = L.marker([lat, plotLon], {
             icon: markerIcon,
             title: `${station.network}_${station.station}`,
             status: station.status // Store status for cluster coloring
@@ -2360,9 +2383,12 @@ function updateMapMarkersFilter(network, status) {
         validCoordinates = true;
         const lat = station.coordinates.lat;
         const lon = station.coordinates.lon;
+        // Only the plotted position needs the antimeridian-normalized
+        // longitude; popups/labels should keep showing the real value.
+        const plotLon = normalizeLongitude(lon, mapRefLon());
 
         // Add to bounds for auto-zooming
-        bounds.extend([lat, lon]);
+        bounds.extend([lat, plotLon]);
 
         // Create marker with appropriate color
         const markerColor = getStatusColor(station.status);
@@ -2373,7 +2399,7 @@ function updateMapMarkersFilter(network, status) {
             iconAnchor: [9, 9]
         });
 
-        const marker = L.marker([lat, lon], {
+        const marker = L.marker([lat, plotLon], {
             icon: markerIcon,
             title: `${station.network}_${station.station}`
         });
