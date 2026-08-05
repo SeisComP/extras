@@ -2909,17 +2909,21 @@ function checkPendingDeepLink() {
 function renderDetailBody(station) {
     const key = `${station.network}_${station.station}`;
     const extra = (window.stationExtraInfo && window.stationExtraInfo[key]) || {};
-    const now = Date.now();
 
     const rows = station.channels.map(ch => {
         const dataMs = ch.last_data ? new Date(ch.last_data).getTime() : null;
         const feedMs = ch.last_feed ? new Date(ch.last_feed).getTime() : null;
-        const dataLat = dataMs !== null ? (now - dataMs) / 1000 : null;
+        // Use the server-computed latency (based on the slmon host's UTC
+        // clock) rather than Date.now(), so the panel isn't thrown off by
+        // clock skew on the viewer's machine.
+        const dataLat = ch.latency !== undefined && ch.latency !== null ? ch.latency : null;
         // Feed latency / diff are redundant when last_feed == last_data;
         // blank them rather than show two identical latency numbers.
         const showFeed = dataMs !== null && feedMs !== null && feedMs !== dataMs;
-        const feedLat = showFeed ? (now - feedMs) / 1000 : null;
         const diff = showFeed ? (feedMs - dataMs) / 1000 : null;
+        // feedLat = dataLat - diff, derived without "now" so it's equally
+        // immune to viewer clock skew.
+        const feedLat = showFeed && dataLat !== null ? dataLat - diff : null;
         const color = getStatusColor(ch.status);
 
         return `<tr>
