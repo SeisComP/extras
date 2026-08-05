@@ -1,7 +1,7 @@
 #!/usr/bin/env seiscomp-python
 
 from getopt import getopt, GetoptError
-from time import time, gmtime
+from time import time, gmtime, sleep
 from datetime import datetime
 import os
 import sys
@@ -9,6 +9,7 @@ import signal
 import glob
 import re
 import json
+import threading
 
 from seiscomp.myconfig import MyConfig
 import seiscomp.slclient
@@ -44,7 +45,8 @@ def load_station_coordinates(config):
         station = station_info['station']
 
         try:
-            with urlopen(base_url + f"station/1/query?net={network}&sta={station}&format=text") as fp:
+            url = base_url + f"station/1/query?net={network}&sta={station}&format=text"
+            with urlopen(url, timeout=10) as fp:
                 fp.readline()
                 location_info = dict(zip(('lat', 'lon', 'elevation'), map(float, fp.readline().split(b'|')[2:5])))
 
@@ -130,27 +132,36 @@ class StatusDict(dict):
         # regex = re.compile("[SLBVEH][HNLG][ZNE123]")
         regex = regexStreams
         for line in f:
-            net_sta = line[:2].strip() + "_" + line[3:8].strip()
-            if not net_sta in stations:
-                continue
-            typ = line[16]
-            if typ != "D":
-                continue
-            cha = line[12:15].strip()
-            if not regex.match(cha):
-                continue
+            # A truncated/corrupted 'slinktool -Q' response (e.g. from a
+            # network hiccup mid-transfer) can hand us a short or garbled
+            # line here. Skip it instead of letting an IndexError/ValueError
+            # crash the whole bootstrap before slmon2 even starts.
+            try:
+                net_sta = line[:2].strip() + "_" + line[3:8].strip()
+                if not net_sta in stations:
+                    continue
+                typ = line[16]
+                if typ != "D":
+                    continue
+                cha = line[12:15].strip()
+                if not regex.match(cha):
+                    continue
 
-            d = Status()
-            d.net = line[0: 2].strip()
-            d.sta = line[3: 8].strip()
-            d.loc = line[9:11].strip()
-            d.cha = line[12:15]
-            d.typ = line[16]
-            d.last_data = seiscomp.slclient.timeparse(line[47:70])
-            d.last_feed = d.last_data
-            sec = "%s_%s" % (d.net, d.sta)
-            sec = "%s.%s.%s.%s.%c" % (d.net, d.sta, d.loc, d.cha, d.typ)
-            self[sec] = d
+                d = Status()
+                d.net = line[0: 2].strip()
+                d.sta = line[3: 8].strip()
+                d.loc = line[9:11].strip()
+                d.cha = line[12:15]
+                d.typ = line[16]
+                d.last_data = seiscomp.slclient.timeparse(line[47:70])
+                d.last_feed = d.last_data
+                sec = "%s_%s" % (d.net, d.sta)
+                sec = "%s.%s.%s.%s.%c" % (d.net, d.sta, d.loc, d.cha, d.typ)
+                self[sec] = d
+            except (IndexError, ValueError) as e:
+                print(f"skipping malformed 'slinktool -Q' line: {line!r} ({e})",
+                      file=sys.stderr)
+                continue
 
     def read(self, source):
         """
@@ -257,8 +268,15 @@ class StatusDict(dict):
 
             # Get latency information
             now = datetime.utcnow()
-            latency_data = now - value.last_data
-            latency_seconds = total_seconds(latency_data)
+            if value.last_data:
+                latency_seconds = total_seconds(now - value.last_data)
+            else:
+                # No valid last-data timestamp (e.g. a skipped malformed
+                # line from 'slinktool -Q'); treat as maximally stale
+                # instead of crashing on `now - None`. Use a large finite
+                # value, not float('inf'), since this ends up in JSON
+                # output and Infinity isn't valid JSON.
+                latency_seconds = 10**9
 
             # Extract channel type (first two characters, e.g., 'LH', 'BH', 'HH', 'EH')
             channel_type = value.cha[:2] if len(value.cha) >= 2 else "other"
@@ -452,20 +470,59 @@ def get_status_from_seconds(seconds, channel_type=None):
         return "good"
 
 
+# Single source of truth for status -> color/label, in increasing severity
+# order. CSS (:root vars + .station-* classes), the browser-side JS
+# (window.STATUS_COLORS, getStatusColor(), the map legend) and getColor()
+# below are all generated/derived from this one list so they can no longer
+# silently drift apart the way the old CSS palette and the old hardcoded
+# JS/Python palette did (same status name, different color on screen
+# depending which part of the page you looked at).
+#
+# 'good' is intentionally neutral (no color) rather than green: several
+# buckets in the middle of this list (e.g. hour-delayed) used to be
+# rendered green, which reads as "healthy" even though it is well past
+# the point where an operator should be concerned.
+STATUS_STYLES = [
+    {"name": "good",         "bg": "#ffffff", "fg": "#1f2937", "caption": "Good (&le; 1 min)"},
+    {"name": "delayed",      "bg": "#fef3c7", "fg": "#92400e", "caption": "&gt; 1 min"},
+    {"name": "long-delayed", "bg": "#fde68a", "fg": "#78350f", "caption": "&gt; 10 min"},
+    {"name": "very-delayed", "bg": "#fbbf24", "fg": "#78350f", "caption": "&gt; 30 min"},
+    {"name": "hour-delayed", "bg": "#f59e0b", "fg": "#7c2d12", "caption": "&gt; 1 hour"},
+    {"name": "warning",      "bg": "#f97316", "fg": "#ffffff", "caption": "&gt; 2 hours"},
+    {"name": "critical",     "bg": "#ea580c", "fg": "#ffffff", "caption": "&gt; 6 hours"},
+    {"name": "day-delayed",  "bg": "#dc2626", "fg": "#ffffff", "caption": "&gt; 1 day"},
+    {"name": "multi-day",    "bg": "#b91c1c", "fg": "#ffffff", "caption": "&gt; 2 days"},
+    {"name": "three-day",    "bg": "#991b1b", "fg": "#ffffff", "caption": "&gt; 3 days"},
+    {"name": "four-day",     "bg": "#7c2d12", "fg": "#ffffff", "caption": "&gt; 4 days"},
+    {"name": "unavailable",  "bg": "#57534e", "fg": "#ffffff", "caption": "&gt; 5 days"},
+]
+STATUS_COLORS = {s["name"]: s["bg"] for s in STATUS_STYLES}
+
+
+def status_color(name):
+    """Look up a status's color in the single shared palette (STATUS_STYLES)."""
+    return STATUS_COLORS.get(name, STATUS_COLORS["good"])
+
+
+def render_legend_html():
+    """Legend swatches for all 12 statuses, generated from STATUS_STYLES so
+    it can't fall out of sync with the palette (the old hand-written legends
+    on the main and station pages silently covered only 6-8 of the 12)."""
+    return "\n".join(
+        f'            <div class="legend-item">\n'
+        f'                <div class="legend-color" style="background-color: {s["bg"]}; '
+        f'{"border: 1px solid #e5e7eb;" if s["name"] == "good" else ""}"></div>\n'
+        f'                <span>{s["caption"]}</span>\n'
+        f'            </div>'
+        for s in STATUS_STYLES
+    )
+
+
 def getColor(delta):
-    delay = total_seconds(delta)
-    if delay > 432000: return '#666666'  # > 5 days
-    elif delay > 345600: return '#999999'  # > 4 days
-    elif delay > 259200: return '#CCCCCC'  # > 3 days
-    elif delay > 172800: return '#FFB3B3'  # > 2 days
-    elif delay > 86400: return '#FF3333'  # > 1 day
-    elif delay > 21600: return '#FF9966'  # > 6 hours
-    elif delay > 7200: return '#FFFF00'  # > 2 hours
-    elif delay > 3600: return '#00FF00'  # > 1 hour
-    elif delay > 1800: return '#3399FF'  # > 30 minutes
-    elif delay > 600: return '#9470BB'  # > 10 minutes
-    elif delay > 60: return '#EBD6FF'  # > 1 minute
-    else: return '#FFFFFF'  # <= 1 minute
+    """Color for a raw latency, via the same status buckets/thresholds and
+    the same shared palette used everywhere else (get_status_from_seconds
+    uses the identical cutoffs this function used to duplicate by hand)."""
+    return status_color(get_status_from_seconds(total_seconds(delta)))
 
 
 def total_seconds(td):
@@ -512,18 +569,7 @@ def generate_css_file(config):
     --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
 
     /* Status colors */
-    --status-good: #ffffff;
-    --status-delayed: #c084fc;
-    --status-long-delayed: #8b5cf6;
-    --status-very-delayed: #3b82f6;
-    --status-hour-delayed: #10b981;
-    --status-warning: #fbbf24;
-    --status-critical: #f97316;
-    --status-day-delayed: #ef4444;
-    --status-multi-day: #f87171;
-    --status-three-day: #d1d5db;
-    --status-four-day: #9ca3af;
-    --status-unavailable: #6b7280;
+/*__STATUS_VARS__*/
 }
 
 .dark-mode {
@@ -870,77 +916,7 @@ table tr:hover {
 }
 
 /* Status Colors */
-.station-unavailable {
-    background-color: var(--status-unavailable);
-    color: white;
-    border-color: var(--status-unavailable);
-}
-
-.station-warning {
-    background-color: var(--status-warning);
-    color: #7c2d12;
-    border-color: var(--status-warning);
-}
-
-.station-critical {
-    background-color: var(--status-critical);
-    color: white;
-    border-color: var(--status-critical);
-}
-
-.station-delayed {
-    background-color: var(--status-delayed);
-    color: #4a044e;
-    border-color: var(--status-delayed);
-}
-
-.station-long-delayed {
-    background-color: var(--status-long-delayed);
-    color: white;
-    border-color: var(--status-long-delayed);
-}
-
-.station-very-delayed {
-    background-color: var(--status-very-delayed);
-    color: white;
-    border-color: var(--status-very-delayed);
-}
-
-.station-hour-delayed {
-    background-color: var(--status-hour-delayed);
-    color: white;
-    border-color: var(--status-hour-delayed);
-}
-
-.station-day-delayed {
-    background-color: var(--status-day-delayed);
-    color: white;
-    border-color: var(--status-day-delayed);
-}
-
-.station-multi-day {
-    background-color: var(--status-multi-day);
-    color: #7f1d1d;
-    border-color: var(--status-multi-day);
-}
-
-.station-three-day {
-    background-color: var(--status-three-day);
-    color: #1f2937;
-    border-color: var(--status-three-day);
-}
-
-.station-four-day {
-    background-color: var(--status-four-day);
-    color: white;
-    border-color: var(--status-four-day);
-}
-
-.station-good {
-    background-color: var(--status-good);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
+/*__STATUS_CLASSES__*/
 
 /* Tooltip */
 .grid-cell::after {
@@ -1121,6 +1097,102 @@ table tr:hover {
     color: #b91c1c;
     border-left: 4px solid #ef4444;
     display: none;
+}
+
+/* Station Detail Panel (slide-over, replaces per-station page navigation) */
+.detail-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 1998;
+}
+
+.detail-overlay.open {
+    display: block;
+}
+
+.detail-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: 720px;
+    max-width: 92vw;
+    background-color: var(--bg-primary);
+    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.2);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    z-index: 1999;
+    display: flex;
+    flex-direction: column;
+}
+
+.detail-panel.open {
+    transform: translateX(0);
+}
+
+.detail-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    font-size: 16px;
+}
+
+.detail-panel-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-secondary);
+    padding: 4px 8px;
+}
+
+.detail-panel-close:hover {
+    color: var(--text-primary);
+}
+
+.detail-panel-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.detail-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.detail-table-wrap {
+    overflow-x: auto;
+    margin-top: 12px;
+}
+
+.detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.detail-table th, .detail-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border-color);
+    text-align: left;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .detail-panel {
+        width: 100vw;
+        max-width: 100vw;
+    }
 }
 
 /* Responsive Design */
@@ -1422,6 +1494,26 @@ table tr:hover {
     }
     """
 
+    status_vars_css = "\n".join(
+        f"    --status-{s['name']}: {s['bg']};" for s in STATUS_STYLES
+    )
+
+    station_class_blocks = []
+    for s in STATUS_STYLES:
+        fg = "var(--text-primary)" if s["name"] == "good" else s["fg"]
+        border = "var(--border-color)" if s["name"] == "good" else f"var(--status-{s['name']})"
+        station_class_blocks.append(
+            f".station-{s['name']} {{\n"
+            f"    background-color: var(--status-{s['name']});\n"
+            f"    color: {fg};\n"
+            f"    border-color: {border};\n"
+            f"}}"
+        )
+    station_classes_css = "\n\n".join(station_class_blocks)
+
+    css_content = css_content.replace("/*__STATUS_VARS__*/", status_vars_css)
+    css_content = css_content.replace("/*__STATUS_CLASSES__*/", station_classes_css)
+
     try:
         css_path = os.path.join(config['setup']['wwwdir'], 'styles.css')
         with open(css_path, 'w') as f:
@@ -1446,6 +1538,36 @@ let viewMode = 'table'; // 'table', 'grid', or 'map'
 let mapInitialized = false;
 let map = null;
 let markers = [];
+
+// Minimal HTML-escaping helper for text interpolated into innerHTML
+// (station/channel codes, admin-configured per-station text, etc.)
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// Leaflet plots raw longitude on a single, unwrapped copy of the world, so
+// a station at e.g. -169 (Samoa/Tonga area) renders numerically far from
+// a Pacific-centered map (lon ~134) even though it's geographically just
+// across the +/-180 antimeridian from it -- it ends up drawn near the
+// Americas instead of next to Australia/NZ/Fiji. Shift by +/-360 until
+// the longitude is within 180 degrees of the map's reference point so
+// geographically close stations stay numerically close.
+function normalizeLongitude(lon, refLon) {
+    let normalized = lon;
+    while (normalized - refLon > 180) normalized -= 360;
+    while (normalized - refLon < -180) normalized += 360;
+    return normalized;
+}
+
+function mapRefLon() {
+    return (window.mapSettings && window.mapSettings.center && typeof window.mapSettings.center.lon === 'number')
+        ? window.mapSettings.center.lon
+        : 0;
+}
 
 // Function to initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -1551,43 +1673,15 @@ function setupEventListeners() {
             }
         }
     });
-}
 
-// Function to set active view based on URL or saved preference
-function setActiveView() {
-    // Extract view from URL if present
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlView = urlParams.get('view');
-
-    if (urlView && ['table', 'grid', 'map'].includes(urlView)) {
-        viewMode = urlView;
-    }
-
-    // Set active class on the appropriate link
-    document.querySelectorAll('.view-toggle a').forEach(link => {
-        if (link.getAttribute('data-view') === viewMode) {
-            link.classList.add('active');
-        } else {
-            link.classList.remove('active');
+    // Station detail panel: close button, backdrop click, Escape key
+    document.getElementById('detail-panel-close').addEventListener('click', hideDetail);
+    document.getElementById('detail-overlay').addEventListener('click', hideDetail);
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.getElementById('detail-panel').classList.contains('open')) {
+            hideDetail();
         }
     });
-
-    // Show the appropriate view container
-    document.querySelectorAll('.view-container').forEach(container => {
-        if (container.id === `${viewMode}-view`) {
-            container.style.display = 'block';
-        } else {
-            container.style.display = 'none';
-        }
-    });
-
-    // Initialize map if needed
-    if (viewMode === 'map' && !mapInitialized && typeof L !== 'undefined') {
-        initializeMap();
-    }
-
-    // Save preference
-    localStorage.setItem('seedlink-view-mode', viewMode);
 }
 
 // Function to switch between views
@@ -1764,30 +1858,16 @@ function initializeMap() {
                 iconCreateFunction: function(cluster) {
                     const count = cluster.getChildCount();
 
-                    // Determine color based on worst status in the cluster
+                    // Determine color based on worst status in the cluster.
+                    // Severity rank comes from window.STATUS_LEGEND (same
+                    // server-generated, single-source-of-truth order used
+                    // for colors elsewhere) instead of a separately
+                    // hand-maintained copy of the ordering.
+                    const severityRank = name => window.STATUS_LEGEND.findIndex(s => s.name === name);
                     let worstStatus = 'good';
-                    const markers = cluster.getAllChildMarkers();
-
-                    for (const marker of markers) {
+                    for (const marker of cluster.getAllChildMarkers()) {
                         const status = marker.options.status || 'good';
-
-                        // Simple ordering of statuses from least to most severe
-                        const statusOrder = {
-                            'good': 0,
-                            'delayed': 1,
-                            'long-delayed': 2,
-                            'very-delayed': 3,
-                            'hour-delayed': 4,
-                            'warning': 5,
-                            'critical': 6,
-                            'day-delayed': 7,
-                            'multi-day': 8,
-                            'three-day': 9,
-                            'four-day': 10,
-                            'unavailable': 11
-                        };
-
-                        if ((statusOrder[status] || 0) > (statusOrder[worstStatus] || 0)) {
+                        if (severityRank(status) > severityRank(worstStatus)) {
                             worstStatus = status;
                         }
                     }
@@ -1954,9 +2034,12 @@ function updateMapMarkers() {
         validCoordinates = true;
         const lat = station.coordinates.lat;
         const lon = station.coordinates.lon;
+        // Only the plotted position needs the antimeridian-normalized
+        // longitude; popups/labels should keep showing the real value.
+        const plotLon = normalizeLongitude(lon, mapRefLon());
 
         // Add to bounds for auto-zooming
-        bounds.extend([lat, lon]);
+        bounds.extend([lat, plotLon]);
 
         // Create marker with appropriate color based on status
         const markerColor = getStatusColor(station.status);
@@ -1974,7 +2057,7 @@ function updateMapMarkers() {
             iconAnchor: [9, 9]
         });
 
-        const marker = L.marker([lat, lon], {
+        const marker = L.marker([lat, plotLon], {
             icon: markerIcon,
             title: `${station.network}_${station.station}`,
             status: station.status // Store status for cluster coloring
@@ -2001,7 +2084,7 @@ function updateMapMarkers() {
             Channels: ${channelGroupsHTML}<br>
             Coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)}
             ${station.coordinates.elevation ? '<br>Elevation: ' + station.coordinates.elevation.toFixed(1) + ' m' : ''}
-            <br><a href="${station.network}_${station.station}.html" target="_blank">View Details</a>
+            <br><a href="#" onclick="showDetail('${station.network}_${station.station}');return false">View Details →</a>
         `);
 
         // Add to the cluster group or directly to the map
@@ -2076,17 +2159,14 @@ function addMapLegend() {
 
     legend.onAdd = function() {
         const div = L.DomUtil.create('div', 'map-legend');
-        div.innerHTML = `
-            <h4>Station Status</h4>
-            <div><span style="background-color: #FFFFFF"></span> Good (&le; 1 min)</div>
-            <div><span style="background-color: #c084fc"></span> &gt; 1 min</div>
-            <div><span style="background-color: #8b5cf6"></span> &gt; 10 min</div>
-            <div><span style="background-color: #3b82f6"></span> &gt; 30 min</div>
-            <div><span style="background-color: #10b981"></span> &gt; 1 hour</div>
-            <div><span style="background-color: #fbbf24"></span> &gt; 2 hours</div>
-            <div><span style="background-color: #f97316"></span> &gt; 6 hours</div>
-            <div><span style="background-color: #ef4444"></span> &gt; 1 day</div>
-        `;
+        // Built from window.STATUS_LEGEND/STATUS_COLORS (same source as the
+        // CSS and getStatusColor()) so this legend can't fall out of sync
+        // with what the markers actually show, and covers all statuses
+        // instead of a hand-picked subset.
+        const rows = window.STATUS_LEGEND.map(s =>
+            `<div><span style="background-color: ${getStatusColor(s.name)}"></span> ${s.caption}</div>`
+        ).join('');
+        div.innerHTML = `<h4>Station Status</h4>${rows}`;
 
         // Add custom styles to the legend
         const style = document.createElement('style');
@@ -2303,9 +2383,12 @@ function updateMapMarkersFilter(network, status) {
         validCoordinates = true;
         const lat = station.coordinates.lat;
         const lon = station.coordinates.lon;
+        // Only the plotted position needs the antimeridian-normalized
+        // longitude; popups/labels should keep showing the real value.
+        const plotLon = normalizeLongitude(lon, mapRefLon());
 
         // Add to bounds for auto-zooming
-        bounds.extend([lat, lon]);
+        bounds.extend([lat, plotLon]);
 
         // Create marker with appropriate color
         const markerColor = getStatusColor(station.status);
@@ -2316,7 +2399,7 @@ function updateMapMarkersFilter(network, status) {
             iconAnchor: [9, 9]
         });
 
-        const marker = L.marker([lat, lon], {
+        const marker = L.marker([lat, plotLon], {
             icon: markerIcon,
             title: `${station.network}_${station.station}`
         });
@@ -2328,7 +2411,7 @@ function updateMapMarkersFilter(network, status) {
             Latency: ${formatLatency(station.latency)}<br>
             Coordinates: ${lat.toFixed(4)}, ${lon.toFixed(4)}
             ${station.coordinates.elevation ? '<br>Elevation: ' + station.coordinates.elevation.toFixed(1) + ' m' : ''}
-            <br><a href="${station.network}_${station.station}.html" target="_blank">View Details</a>
+            <br><a href="#" onclick="showDetail('${station.network}_${station.station}');return false">View Details →</a>
         `);
 
         marker.addTo(map);
@@ -2349,7 +2432,7 @@ function updateMapMarkersFilter(network, status) {
     }
 }
 
-// Enhanced version of the setActiveView function to handle map initialization
+// Sets active view based on URL or saved preference, including map init
 function setActiveView() {
     // Extract view from URL if present
     const urlParams = new URLSearchParams(window.location.search);
@@ -2435,6 +2518,11 @@ function fetchData() {
 
         // Render the data based on current view
         renderData();
+
+        // Keep an already-open detail panel's numbers fresh, and open one
+        // for a ?station= deep link on the very first successful load.
+        refreshOpenDetailPanel();
+        checkPendingDeepLink();
 
         // Update timestamp
         const updateTime = new Date().toUTCString();
@@ -2564,7 +2652,7 @@ function renderTableView(data) {
 
         // Network-Station cell
         const nameCell = document.createElement('td');
-        nameCell.innerHTML = `<small>${station.network}</small> <a href="${station.network}_${station.station}.html">${station.station}</a>`;
+        nameCell.innerHTML = `<small>${esc(station.network)}</small> <a href="#" onclick="showDetail('${station.network}_${station.station}');return false">${esc(station.station)}</a>`;
         // Add a badge for primary channel type
         if (station.primaryChannelType) {
             nameCell.innerHTML += ` <span class="channel-badge">${station.primaryChannelType}</span>`;
@@ -2697,7 +2785,11 @@ function renderGridView(data) {
         for (const station of stations) {
             const stationCell = document.createElement('a');
             stationCell.className = `grid-cell station-${station.status}`;
-            stationCell.href = `${station.network}_${station.station}.html`;
+            stationCell.href = '#';
+            stationCell.addEventListener('click', function(e) {
+                e.preventDefault();
+                showDetail(`${station.network}_${station.station}`);
+            });
             stationCell.textContent = station.station;
             stationCell.setAttribute('data-tooltip', `${station.network}_${station.station}: ${formatLatency(station.latency)}`);
             stationCell.setAttribute('data-network', station.network);
@@ -2745,24 +2837,135 @@ function formatStatus(status, channelType) {
     return status.charAt(0).toUpperCase() + status.slice(1) + lhSuffix;
 }
 
-// Function to get color for a status
+// Function to get color for a status. Reads from window.STATUS_COLORS,
+// injected server-side from the same STATUS_STYLES list that generates
+// styles.css's --status-* variables -- one palette, not a second copy
+// that can quietly drift from the CSS (which is what used to make the
+// Status and Latency cells of the same table row show different colors).
 function getStatusColor(status) {
-    const colors = {
-        'good': '#FFFFFF',
-        'delayed': '#EBD6FF',
-        'long-delayed': '#9470BB',
-        'very-delayed': '#3399FF',
-        'hour-delayed': '#00FF00',
-        'warning': '#FFFF00',
-        'critical': '#FF9966',
-        'day-delayed': '#FF3333',
-        'multi-day': '#FFB3B3',
-        'three-day': '#CCCCCC',
-        'four-day': '#999999',
-        'unavailable': '#666666'
-    };
+    return (window.STATUS_COLORS && window.STATUS_COLORS[status]) || '#FFFFFF';
+}
 
-    return colors[status] || '#FFFFFF';
+// ---------------------------------------------------------------------
+// Station detail panel: an inline slide-over instead of navigating to a
+// separate NET_STA.html page, so the table/grid scroll position, filters,
+// and map view survive opening/closing it. Direct/bookmarked links still
+// work via index.html?station=NET_STA (see checkPendingDeepLink()).
+// ---------------------------------------------------------------------
+
+function findStation(key) {
+    return stationsData.find(s => `${s.network}_${s.station}` === key);
+}
+
+function showDetail(key) {
+    const station = findStation(key);
+    if (!station) return;
+
+    document.getElementById('detail-panel-title').textContent = key;
+    document.getElementById('detail-panel-body').innerHTML = renderDetailBody(station);
+    document.getElementById('detail-panel').classList.add('open');
+    document.getElementById('detail-overlay').classList.add('open');
+
+    const url = new URL(window.location);
+    url.searchParams.set('station', key);
+    window.history.replaceState({}, '', url);
+}
+
+function hideDetail() {
+    document.getElementById('detail-panel').classList.remove('open');
+    document.getElementById('detail-overlay').classList.remove('open');
+
+    const url = new URL(window.location);
+    url.searchParams.delete('station');
+    window.history.replaceState({}, '', url);
+}
+
+// If the currently-open panel's station still exists in freshly-fetched
+// data, refresh its contents in place instead of leaving stale numbers
+// showing until the user closes and reopens it.
+function refreshOpenDetailPanel() {
+    const panel = document.getElementById('detail-panel');
+    if (!panel.classList.contains('open')) return;
+    const key = document.getElementById('detail-panel-title').textContent;
+    const station = findStation(key);
+    if (station) {
+        document.getElementById('detail-panel-body').innerHTML = renderDetailBody(station);
+    }
+}
+
+// Opens the panel for ?station=NET_STA on the very first successful load
+// only (not every refresh), so a link/bookmark opens straight to that
+// station without fighting a user who has since closed the panel.
+let pendingDeepLinkChecked = false;
+function checkPendingDeepLink() {
+    if (pendingDeepLinkChecked) return;
+    pendingDeepLinkChecked = true;
+    const key = new URLSearchParams(window.location.search).get('station');
+    if (key && findStation(key)) {
+        showDetail(key);
+    }
+}
+
+function renderDetailBody(station) {
+    const key = `${station.network}_${station.station}`;
+    const extra = (window.stationExtraInfo && window.stationExtraInfo[key]) || {};
+
+    const rows = station.channels.map(ch => {
+        const dataMs = ch.last_data ? new Date(ch.last_data).getTime() : null;
+        const feedMs = ch.last_feed ? new Date(ch.last_feed).getTime() : null;
+        // Use the server-computed latency (based on the slmon host's UTC
+        // clock) rather than Date.now(), so the panel isn't thrown off by
+        // clock skew on the viewer's machine.
+        const dataLat = ch.latency !== undefined && ch.latency !== null ? ch.latency : null;
+        // Feed latency / diff are redundant when last_feed == last_data;
+        // blank them rather than show two identical latency numbers.
+        const showFeed = dataMs !== null && feedMs !== null && feedMs !== dataMs;
+        const diff = showFeed ? (feedMs - dataMs) / 1000 : null;
+        // feedLat = dataLat - diff, derived without "now" so it's equally
+        // immune to viewer clock skew.
+        const feedLat = showFeed && dataLat !== null ? dataLat - diff : null;
+        const color = getStatusColor(ch.status);
+
+        return `<tr>
+            <td>${ch.location ? esc(ch.location) + '.' : ''}${esc(ch.channel)}</td>
+            <td>${dataMs !== null ? new Date(dataMs).toLocaleString() : 'n/a'}</td>
+            <td style="background-color:${color}">${formatLatency(dataLat)}</td>
+            <td>${feedMs !== null ? new Date(feedMs).toLocaleString() : 'n/a'}</td>
+            <td style="background-color:${showFeed ? color : ''}">${showFeed ? formatLatency(feedLat) : ''}</td>
+            <td style="background-color:${showFeed ? color : ''}">${showFeed ? formatLatency(diff) : ''}</td>
+        </tr>`;
+    }).join('');
+
+    // %s -> station code only (legacy, e.g. GEOFON's liveseis.php?station=%s).
+    // {netsta} -> "NET.STA" (e.g. GAPS traceview's #/?stations=NET.STA).
+    // Both are plain string substitutions in an admin-configured template
+    // (config.ini's [setup] liveurl), so which one a deployment needs is a
+    // config change, not a code change.
+    const liveUrl = window.liveUrlTemplate
+        ? window.liveUrlTemplate
+              .replace('%s', station.station)
+              .replace('{netsta}', `${station.network}.${station.station}`)
+        : '';
+    const liveUrlHtml = liveUrl
+        ? `<p><a href="${esc(liveUrl)}" target="_blank">View live seismogram →</a></p>`
+        : '';
+
+    return `
+        <div class="panel-status-row">
+            <span class="detail-badge station-${station.status}">${formatStatus(station.status, station.primaryChannelType)}</span>
+        </div>
+        ${extra.info ? `<div style="margin-top:8px">${extra.info}</div>` : ''}
+        ${extra.text ? `<p>${extra.text}</p>` : ''}
+        <div class="detail-table-wrap">
+            <table class="detail-table">
+                <thead>
+                    <tr><th>Channel</th><th>Last Sample</th><th>Data Latency</th><th>Last Received</th><th>Feed Latency</th><th>Diff</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+        ${liveUrlHtml}
+    `;
 }
 
 // Function to update the refresh interval
@@ -3095,6 +3298,14 @@ def generate_html_base(config, title, active_view):
 
     # Continue with the second part, but using f-string instead of .format()
     html += f"""
+    <script>
+        // Single source of truth for status colors, generated from the same
+        // STATUS_STYLES list as styles.css's --status-* variables, so this
+        // page's JS (getStatusColor, map legend) can never drift from the
+        // CSS/table colors the way the old hand-duplicated palettes did.
+        window.STATUS_COLORS = {json.dumps(STATUS_COLORS)};
+        window.STATUS_LEGEND = {json.dumps([{"name": s["name"], "caption": s["caption"]} for s in STATUS_STYLES])};
+    </script>
 </head>
 <body>
     <div class="container">
@@ -3162,7 +3373,7 @@ def generate_main_html(config, status):
     html += f"""
         <script>
             //Map configuration settings
-            windows.mapSettings = {json.dumps(map_settings)};
+            window.mapSettings = {json.dumps(map_settings)};
         </script>
         <div class="filters">
             <div class="filter-group">
@@ -3239,59 +3450,28 @@ def generate_main_html(config, status):
         </div>
     """
 
-    # Add legend
-    html += """
+    # Add legend (generated from STATUS_STYLES, the single palette source)
+    html += f"""
         <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ffffff; border: 1px solid #e5e7eb;"></div>
-                <span>Good (&le; 1 min)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #c084fc;"></div>
-                <span>&gt; 1 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #8b5cf6;"></div>
-                <span>&gt; 10 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #3b82f6;"></div>
-                <span>&gt; 30 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #10b981;"></div>
-                <span>&gt; 1 hour</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #fbbf24;"></div>
-                <span>&gt; 2 hours</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #f97316;"></div>
-                <span>&gt; 6 hours</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ef4444;"></div>
-                <span>&gt; 1 day</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #f87171;"></div>
-                <span>&gt; 2 days</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #d1d5db;"></div>
-                <span>&gt; 3 days</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #9ca3af;"></div>
-                <span>&gt; 4 days</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #6b7280;"></div>
-                <span>&gt; 5 days</span>
-            </div>
+{render_legend_html()}
         </div>
     """
+
+    # Per-station admin-configured extras (info/text) and the live-seismogram
+    # URL template, exposed to the client so the inline detail panel can show
+    # them without a separate per-station HTML page.
+    station_extra = {}
+    for k in config.station:
+        net_sta = f"{config.station[k]['net']}_{config.station[k]['sta']}"
+        extra = {}
+        if 'info' in config.station[k]:
+            extra['info'] = config.station[k]['info']
+        if 'text' in config.station[k]:
+            extra['text'] = config.station[k]['text']
+        if extra:
+            station_extra[net_sta] = extra
+
+    live_url_template = config['setup'].get('liveurl', '')
 
     # Add footer and close tags
     html += f"""
@@ -3301,10 +3481,26 @@ def generate_main_html(config, status):
         </div>
     </div>
 
+    <!-- Station Detail Panel: replaces per-station HTML page navigation with
+         an inline slide-over so filters/scroll position/map state aren't
+         lost. Direct links still work via index.html?station=NET_STA. -->
+    <div id="detail-overlay" class="detail-overlay"></div>
+    <aside id="detail-panel" class="detail-panel">
+        <div class="detail-panel-header">
+            <span id="detail-panel-title">Station Detail</span>
+            <button id="detail-panel-close" class="detail-panel-close" aria-label="Close">&times;</button>
+        </div>
+        <div id="detail-panel-body" class="detail-panel-body"></div>
+    </aside>
+
     <!-- Export JSON data for JavaScript -->
     <script>
         // Initialize stationsData with server-side rendered data
         const initialStationsData = {status.to_json()};
+        // Admin-configured per-station extras (info/text) and the live
+        // seismogram URL template, used by the detail panel.
+        window.stationExtraInfo = {json.dumps(station_extra)};
+        window.liveUrlTemplate = {json.dumps(live_url_template)};
     </script>
 
     <!-- Include the main JavaScript file -->
@@ -3324,150 +3520,31 @@ def generate_main_html(config, status):
         return None
 
 
-def generate_station_html(net_sta, config, status):
-    """Generate individual station HTML page"""
+def generate_station_html(net_sta, config):
+    """Write a tiny redirect stub for net_sta.html.
 
-    try:
-        network, station = net_sta.split("_")
-    except:
-        print(f"Invalid station identifier: {net_sta}")
-        return None
+    Station detail used to be a full standalone page, regenerated from
+    scratch for every station on every refresh cycle, with its own
+    hand-duplicated color palette and a legend that only covered 6 of the
+    12 statuses. That's now an inline slide-over panel on index.html (see
+    showDetail()/renderDetailBody() in generate_js_file, and stationsData's
+    per-channel info, which already has everything the old page rendered).
 
-    html = generate_html_base(config, f"Station {station}", "table")
-
-    # Add station info
-    html += f"""
-        <div class="station-header">
-            <h2>{network}_{station}</h2>
+    This stub only exists so old bookmarks/external links to net_sta.html
+    keep working -- it immediately redirects to the equivalent deep link.
     """
-
-    # Add station information if available
-    try:
-        if 'info' in config.station[net_sta]:
-            html += f'<div class="station-info">{config.station[net_sta]["info"]}</div>'
-    except:
-        pass
-
-    html += """
-        </div>
-    """
-
-    # Add custom text if available
-    try:
-        if 'text' in config.station[net_sta]:
-            html += f'<p>{config.station[net_sta]["text"]}</p>'
-    except:
-        pass
-
-    # Station details table
-    html += """
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Channel</th>
-                        <th>Last Sample</th>
-                        <th>Data Latency</th>
-                        <th>Last Received</th>
-                        <th>Feed Latency</th>
-                        <th>Diff</th>
-                    </tr>
-                </thead>
-                <tbody>
-    """
-
-    now = datetime.utcnow()
-    netsta2 = net_sta.replace("_", ".")
-    streams = [x for x in list(status.keys()) if x.find(netsta2) == 0]
-    streams.sort()
-
-    for label in streams:
-        tim1 = status[label].last_data
-        tim2 = status[label].last_feed
-
-        lat1, lat2, lat3 = now-tim1, now-tim2, tim2-tim1
-        col1, col2, col3 = getColor(lat1), getColor(lat2), getColor(lat3)
-
-        if lat1 == lat2:
-            lat2 = lat3 = None
-
-        if label[-2] == '.' and label[-1] in "DE":
-            label = label[:-2]
-
-        n, s, loc, c = label.split(".")
-        c = ("%s.%s" % (loc, c)).strip(".")
-
-        time1_str = tim1.strftime("%Y/%m/%d %H:%M:%S") if tim1 else "n/a"
-        time2_str = tim2.strftime("%Y/%m/%d %H:%M:%S") if tim2 else "n/a"
-
-        html += f"""
-                <tr>
-                    <td>{s} {c}</td>
-                    <td>{time1_str}</td>
-                    <td style="background-color:{col1}">{formatLatency(lat1)}</td>
-                    <td>{time2_str}</td>
-                    <td style="background-color:{col2}">{formatLatency(lat2)}</td>
-                    <td style="background-color:{col3}">{formatLatency(lat3)}</td>
-                </tr>
-        """
-
-    html += """
-                </tbody>
-            </table>
-        </div>
-    """
-
-    # Legend
-    html += """
-        <div class="legend">
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #ffffff; border: 1px solid #e5e7eb;"></div>
-                <span>Good (&le; 1 min)</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #c084fc;"></div>
-                <span>&gt; 1 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #8b5cf6;"></div>
-                <span>&gt; 10 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #3b82f6;"></div>
-                <span>&gt; 30 min</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #10b981;"></div>
-                <span>&gt; 1 hour</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background-color: #fbbf24;"></div>
-                <span>&gt; 2 hours</span>
-            </div>
-        </div>
-    """
-
-    # Links
-    html += '<div class="links">\n'
-    html += '<p>Click here to <a href="index.html?view=grid" target="_blank">view in Grid View</a><br>\n'
-
-    if 'liveurl' in config['setup']:
-        # Substitute '%s' in live_url by station name
-        s = net_sta.split("_")[-1]
-        url = config['setup']['liveurl'] % s
-        html += f'View a <a href="{url}" target="_blank">live seismogram</a> of station {s}</p>\n'
-
-    html += '</div>\n'
-
-    # Add footer and close tags
-    html += f"""
-        <div class="footer">
-            <div>Last updated {gmtime()[:6][0]:04d}/{gmtime()[:6][1]:02d}/{gmtime()[:6][2]:02d} {gmtime()[:6][3]:02d}:{gmtime()[:6][4]:02d}:{gmtime()[:6][5]:02d} UTC</div>
-            <div><a href="{config['setup']['linkurl']}" target="_top">{config['setup']['linkname']}</a></div>
-        </div>
-    </div>
-
-    <script src="script.js"></script>
+    target = f"index.html?station={net_sta}"
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="refresh" content="0; url={target}">
+    <link rel="canonical" href="{target}">
+    <title>{net_sta} - redirecting…</title>
+    <script>location.replace({json.dumps(target)});</script>
+</head>
+<body>
+    <p>This page has moved. <a href="{target}">Click here</a> if you are not redirected automatically.</p>
 </body>
 </html>
 """
@@ -3476,10 +3553,9 @@ def generate_station_html(net_sta, config, status):
         html_path = os.path.join(config['setup']['wwwdir'], f'{net_sta}.html')
         with open(html_path, 'w') as f:
             f.write(html)
-        print(f"Station HTML file generated at {html_path}")
         return html_path
     except Exception as e:
-        print(f"Error generating station HTML file: {str(e)}")
+        print(f"Error generating station redirect stub for {net_sta}: {str(e)}", file=sys.stderr)
         return None
 
 
@@ -3522,7 +3598,7 @@ def generate_all_files(config, status):
     # Now generate each station page exactly once
     station_htmls = []
     for net_sta in unique_stations:
-        html_path = generate_station_html(net_sta, config, status)
+        html_path = generate_station_html(net_sta, config)
         station_htmls.append(html_path is not None)
 
     # Return success only if all files were generated
@@ -3648,25 +3724,67 @@ def main():
     # Generate initial files
     generate_all_files(config, status)
 
-    # Set up the next time to generate files
-    nextTimeGenerateHTML = time()
+    refresh_secs = int(config['setup']['refresh'])
+
+    # Network timeout for the slinktool subprocess (-nt). Without this,
+    # slinktool has no way to notice a stalled/dead SeedLink connection and
+    # 'for rec in input' below can block forever with no self-recovery.
+    network_timeout = int(config['setup'].get('network_timeout', max(120, 2 * refresh_secs)))
+
+    # Regeneration used to happen only inside the loop below, gated on a
+    # freshly-received record. That means a station (or the whole feed)
+    # going completely silent -- the exact outage this tool exists to
+    # detect -- never triggered a re-render, so the dashboard just froze
+    # on the last-good snapshot instead of showing growing latencies.
+    # A background timer decouples regeneration from record arrival.
+    regen_lock = threading.Lock()
+
+    def safe_generate_all_files():
+        # Skip (rather than queue) if a previous run is still in flight,
+        # so slow/overlapping regenerations can't pile up or race on the
+        # same output files.
+        if not regen_lock.acquire(blocking=False):
+            return
+        try:
+            generate_all_files(config, status)
+        except Exception as e:
+            print(f"ERROR regenerating files: {e}", file=sys.stderr)
+        finally:
+            regen_lock.release()
+
+    def periodic_regenerate():
+        while True:
+            sleep(refresh_secs)
+            safe_generate_all_files()
+
+    regen_thread = threading.Thread(target=periodic_regenerate, daemon=True)
+    regen_thread.start()
 
     print("setting up connection to SeedLink server '%s'" % server)
 
     # Connect to the SeedLink server and start receiving data
-    input = seiscomp.slclient.Input(server, [(s[k]['net'], s[k]['sta'], "", "???") for k in s])
+    input = seiscomp.slclient.Input(server, [(s[k]['net'], s[k]['sta'], "", "???") for k in s],
+                                     timeout=network_timeout)
     for rec in input:
         id = '.'.join([rec.net, rec.sta, rec.loc, rec.cha, rec.rectype])
 
-        try:
-            status[id].last_data = rec.end_time
-            status[id].last_feed = datetime.utcnow()
-        except:
+        if id not in status:
+            # A channel that wasn't part of the initial 'slinktool -Q'
+            # snapshot (station was down at startup, or started a new
+            # channel since). Register it instead of silently dropping it
+            # forever via the old bare except-KeyError -- that used to mean
+            # a recovered/new station would never appear until slmon2 was
+            # restarted.
+            if rec.rectype != 'D' or not regexStreams.match(rec.cha):
+                continue
+            d = Status()
+            d.net, d.sta, d.loc, d.cha, d.typ = rec.net, rec.sta, rec.loc, rec.cha, rec.rectype
+            d.last_data = d.last_feed = rec.end_time
+            status[id] = d
             continue
 
-        if time() > nextTimeGenerateHTML:
-            generate_all_files(config, status)
-            nextTimeGenerateHTML = time() + int(config['setup']['refresh'])
+        status[id].last_data = rec.end_time
+        status[id].last_feed = datetime.utcnow()
 
 
 if __name__ == "__main__":
