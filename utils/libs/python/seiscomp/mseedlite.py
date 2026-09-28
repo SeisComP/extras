@@ -607,12 +607,12 @@ class Record(object):
                 ba.append(int.from_bytes(b, byteorder="big"))
         fd.write(ba)
 
-        buf = (
-            self.data[:4]
-            + struct.pack(">ll", self.X0, self.Xn)
-            + self.data[12:]
-            + ((1 << rec_len_exp) - self.size) * b"\0"
-        )
+        if self.encoding in (10, 11):
+            # Repack STEIM metadata to account for any merging we've done
+            data = self.data[:4] + struct.pack(">ll", self.X0, self.Xn) + self.data[12:]
+        else:
+            data = self.data
+        buf = data + ((1 << rec_len_exp) - self.size) * b"\0"
 
         fd.write(buf)
 
